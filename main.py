@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import signal
 
 from kafkaserver.server import Server
@@ -14,8 +15,10 @@ async def run():
         shutdown_event.set()
 
     loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGINT, _signal_handler)
-    loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+
+    # satisfy the pycharm type checker
+    functools.partial(loop.add_signal_handler, signal.SIGINT, _signal_handler)()
+    functools.partial(loop.add_signal_handler, signal.SIGTERM, _signal_handler)()
 
     try:
         server = Server()
