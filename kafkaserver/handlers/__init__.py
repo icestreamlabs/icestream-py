@@ -1,7 +1,11 @@
 from typing import Protocol, Callable, Any, Awaitable
 
 from kio.schema.errors import ErrorCode
-from kafkaserver.messages import ProduceRequest, ProduceResponse, ProduceRequestHeader, MetadataRequestHeader, MetadataRequest, MetadataResponse
+from kafkaserver.messages import ProduceRequest, ProduceRequestHeader, ProduceResponse, ProduceResponseHeader, \
+    MetadataRequest, \
+    MetadataRequestHeader, MetadataResponse, MetadataResponseHeader, ApiVersionsRequest, ApiVersionsResponse, \
+    CreateTopicsRequest, CreateTopicsResponse, ApiVersionsResponseHeader, CreateTopicsResponseHeader, \
+    ApiVersionsRequestHeader, CreateTopicsRequestHeader
 
 class KafkaHandler(Protocol):
     async def handle_produce_request(self, header: ProduceRequestHeader, req: ProduceRequest, callback: Callable[[ProduceResponse], Any]): pass
