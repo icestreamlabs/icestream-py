@@ -1,18 +1,96 @@
 from typing import Protocol, Callable, Any, Awaitable
 
 from kio.schema.errors import ErrorCode
-from kafkaserver.messages import ProduceRequest, ProduceRequestHeader, ProduceResponse, ProduceResponseHeader, \
-    MetadataRequest, \
-    MetadataRequestHeader, MetadataResponse, MetadataResponseHeader, ApiVersionsRequest, ApiVersionsResponse, \
-    CreateTopicsRequest, CreateTopicsResponse, ApiVersionsResponseHeader, CreateTopicsResponseHeader, \
-    ApiVersionsRequestHeader, CreateTopicsRequestHeader
+from kafkaserver.messages import (
+    ProduceRequest,
+    ProduceRequestHeader,
+    ProduceResponse,
+    ProduceResponseHeader,
+    ApiVersionsRequest,
+    ApiVersionsResponse,
+    CreateTopicsRequest,
+    CreateTopicsResponse,
+    ApiVersionsResponseHeader,
+    CreateTopicsResponseHeader,
+    ApiVersionsRequestHeader,
+    CreateTopicsRequestHeader,
+)
+from kafkaserver.handlers.metadata import (
+    MetadataRequest,
+    MetadataRequestHeader,
+    MetadataResponse,
+)
+
 
 class KafkaHandler(Protocol):
-    async def handle_produce_request(self, header: ProduceRequestHeader, req: ProduceRequest, callback: Callable[[ProduceResponse], Any]): pass
-    def produce_request_error_response(self, error_code: ErrorCode, error_message: str, req: ProduceRequest) -> ProduceResponse: pass
-    async def handle_metadata_request(self, header: MetadataRequestHeader, req: MetadataRequest, callback: Callable[[MetadataResponse], Any]): pass
-    def metadata_request_error_response(self, error_code: ErrorCode, error_message: str, req: MetadataRequest) -> MetadataResponse: pass
-    async def handle_api_versions_request(self, header: ApiVersionsRequestHeader, req: ApiVersionsRequest, callback: Callable[[ApiVersionsResponse], Awaitable[None]]): pass
-    def api_versions_request_error_response(self, error_code: ErrorCode, error_message: str, req: ApiVersionsRequest) -> ApiVersionsResponse: pass
-    async def handle_create_topics_request(self, header: CreateTopicsRequestHeader, req: CreateTopicsRequest, callback: Callable[[CreateTopicsResponse], Awaitable[None]]): pass
-    def create_topics_request_error_response(self, error_code: ErrorCode, error_message: str, req: CreateTopicsRequest) -> CreateTopicsResponse: pass
+    async def handle_produce_request(
+        self,
+        header: ProduceRequestHeader,
+        req: ProduceRequest,
+        api_version: int,
+        callback: Callable[[ProduceResponse], Any],
+    ):
+        pass
+
+    def produce_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ProduceRequest,
+        api_version: int,
+    ) -> ProduceResponse:
+        pass
+
+    async def handle_metadata_request(
+        self,
+        header: MetadataRequestHeader,
+        req: MetadataRequest,
+        api_version: int,
+        callback: Callable[[MetadataResponse], Any],
+    ):
+        pass
+
+    def metadata_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: MetadataRequest,
+        api_version: int,
+    ) -> MetadataResponse:
+        pass
+
+    async def handle_api_versions_request(
+        self,
+        header: ApiVersionsRequestHeader,
+        req: ApiVersionsRequest,
+        api_version: int,
+        callback: Callable[[ApiVersionsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def api_versions_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ApiVersionsRequest,
+        api_version: int,
+    ) -> ApiVersionsResponse:
+        pass
+
+    async def handle_create_topics_request(
+        self,
+        header: CreateTopicsRequestHeader,
+        req: CreateTopicsRequest,
+        api_version: int,
+        callback: Callable[[CreateTopicsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def create_topics_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: CreateTopicsRequest,
+        api_version: int,
+    ) -> CreateTopicsResponse:
+        pass

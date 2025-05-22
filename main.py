@@ -25,7 +25,7 @@ async def run():
         server_handle = asyncio.create_task(server.run())
         done, pending = await asyncio.wait(
             [server_handle, asyncio.create_task(shutdown_event.wait())],
-            return_when=asyncio.FIRST_COMPLETED
+            return_when=asyncio.FIRST_COMPLETED,
         )
         if not shutdown_event.is_set():
             log.warning("task finished unexpectedly, initiating shutdown")
@@ -43,6 +43,7 @@ async def run():
             except Exception:
                 log.exception("error during server task shutdown")
         log.info("shutdown complete")
+
 
 def main():
     log.info("Starting icestream")
