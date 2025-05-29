@@ -2,25 +2,23 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from kio.schema.errors import ErrorCode
 
-from kafkaserver.handlers.metadata import (
+from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
     MetadataResponse,
 )
-from kafkaserver.handlers.produce import (
+from icestream.kafkaserver.handlers.produce import (
     ProduceRequest,
     ProduceRequestHeader,
     ProduceResponse,
 )
-from kafkaserver.messages import (
+from icestream.kafkaserver.messages import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
     ApiVersionsResponse,
-    ApiVersionsResponseHeader,
     CreateTopicsRequest,
     CreateTopicsRequestHeader,
     CreateTopicsResponse,
-    CreateTopicsResponseHeader,
 )
 
 

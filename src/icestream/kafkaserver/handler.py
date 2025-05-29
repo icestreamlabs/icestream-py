@@ -10,23 +10,23 @@ from kio.schema.errors import ErrorCode
 from kio.serial import entity_reader, entity_writer
 from kio.static.constants import EntityType
 
-from kafkaserver.handlers import KafkaHandler
-from kafkaserver.handlers.api_versions import (
+from icestream.kafkaserver.handlers import KafkaHandler
+from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
     ApiVersionsResponse,
 )
-from kafkaserver.handlers.metadata import (
+from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
     MetadataResponse,
 )
-from kafkaserver.handlers.produce import (
+from icestream.kafkaserver.handlers.produce import (
     ProduceRequest,
     ProduceRequestHeader,
     ProduceResponse,
 )
-from kafkaserver.messages import (
+from icestream.kafkaserver.messages import (
     CreatableTopicResult,
     CreateTopicsRequest,
     CreateTopicsRequestHeader,

@@ -2,8 +2,8 @@ import asyncio
 import functools
 import signal
 
-from kafkaserver.server import Server
-from logger import log
+from icestream.kafkaserver.server import Server
+from icestream.logger import log
 
 
 async def run():

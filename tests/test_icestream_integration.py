@@ -4,7 +4,7 @@ import threading
 import pytest
 from aiokafka import AIOKafkaProducer
 
-from kafkaserver.server import Server
+from icestream.kafkaserver.server import Server
 
 BOOTSTRAP_SERVERS = "localhost:9092"
 TEST_TOPIC = "test_topic"
