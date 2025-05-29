@@ -1,35 +1,37 @@
-from dataclasses import dataclass
 import io
 import struct
-from typing import Type, Callable, Awaitable
 from asyncio import StreamWriter
+from dataclasses import dataclass
+from typing import Awaitable, Callable
 
 import structlog
-from kio.index import load_request_schema
-from kio.serial import entity_reader, entity_writer
+from kio.index import load_request_schema, load_response_schema
 from kio.schema.errors import ErrorCode
+from kio.serial import entity_reader, entity_writer
 from kio.static.constants import EntityType
 
 from kafkaserver.handlers import KafkaHandler
-from kafkaserver.messages import (
-    ProduceRequest,
-    ProduceRequestHeader,
-    ProduceResponse,
-    ProduceResponseHeader,
+from kafkaserver.handlers.api_versions import (
+    ApiVersionsRequest,
+    ApiVersionsRequestHeader,
+    ApiVersionsResponse,
+)
+from kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
     MetadataResponse,
-    MetadataResponseHeader,
-    ApiVersionsRequest,
-    ApiVersionsResponse,
-    CreateTopicsRequest,
-    CreateTopicsResponse,
-    ApiVersionsResponseHeader,
-    CreateTopicsResponseHeader,
-    ApiVersionsRequestHeader,
-    CreateTopicsRequestHeader,
 )
-
+from kafkaserver.handlers.produce import (
+    ProduceRequest,
+    ProduceRequestHeader,
+    ProduceResponse,
+)
+from kafkaserver.messages import (
+    CreatableTopicResult,
+    CreateTopicsRequest,
+    CreateTopicsRequestHeader,
+    CreateTopicsResponse,
+)
 
 log = structlog.get_logger()
 
@@ -41,13 +43,6 @@ CREATE_TOPICS_API_KEY = 19
 
 @dataclass
 class RequestHandlerMeta:
-    req_class: Type[EntityType.request]
-    resp_class: Type[EntityType.response]
-    read_req_header: Callable
-    read_req: Callable
-    write_resp_header: Callable
-    write_resp: Callable
-    resp_header_class: Type
     handler_func: Callable[
         [
             KafkaHandler,
@@ -153,46 +148,18 @@ def error_create_topics(
 
 request_map: dict[int, RequestHandlerMeta] = {
     PRODUCE_API_KEY: RequestHandlerMeta(
-        req_class=ProduceRequest,
-        resp_class=ProduceResponse,
-        read_req_header=entity_reader(ProduceRequest.__header_schema__),
-        read_req=entity_reader(ProduceRequest),
-        write_resp_header=entity_writer(ProduceResponse.__header_schema__),
-        write_resp=entity_writer(ProduceResponse),
-        resp_header_class=ProduceResponseHeader,
         handler_func=handle_produce,
         error_response_func=error_produce,
     ),
     METADATA_API_KEY: RequestHandlerMeta(
-        req_class=MetadataRequest,
-        resp_class=MetadataResponse,
-        read_req_header=entity_reader(MetadataRequest.__header_schema__),
-        read_req=entity_reader(MetadataRequest),
-        write_resp_header=entity_writer(MetadataResponse.__header_schema__),
-        write_resp=entity_writer(MetadataResponse),
-        resp_header_class=MetadataResponseHeader,
         handler_func=handle_metadata,
         error_response_func=error_metadata,
     ),
     API_VERSIONS_API_KEY: RequestHandlerMeta(
-        req_class=ApiVersionsRequest,
-        resp_class=ApiVersionsResponse,
-        read_req_header=entity_reader(ApiVersionsRequest.__header_schema__),
-        read_req=entity_reader(ApiVersionsRequest),
-        write_resp_header=entity_writer(ApiVersionsResponse.__header_schema__),
-        write_resp=entity_writer(ApiVersionsResponse),
-        resp_header_class=ApiVersionsResponseHeader,
         handler_func=handle_api_versions,
         error_response_func=error_api_versions,
     ),
     CREATE_TOPICS_API_KEY: RequestHandlerMeta(
-        req_class=CreateTopicsRequest,
-        resp_class=CreateTopicsResponse,
-        read_req_header=entity_reader(CreateTopicsRequest.__header_schema__),
-        read_req=entity_reader(CreateTopicsRequest),
-        write_resp_header=entity_writer(CreateTopicsResponse.__header_schema__),
-        write_resp=entity_writer(CreateTopicsResponse),
-        resp_header_class=CreateTopicsResponseHeader,
         handler_func=handle_create_topics,
         error_response_func=error_create_topics,
     ),
@@ -208,6 +175,8 @@ async def handle_kafka_request(
     api_version = struct.unpack(">H", buffer[2:4])[0]
     buffer = io.BytesIO(buffer)
 
+    log.info(f"got api key {api_key} with api version {api_version}")
+
     meta = request_map[api_key]
     min_vers, max_vers = api_compatibility[api_key]
 
@@ -219,14 +188,18 @@ async def handle_kafka_request(
         req_header = read_req_header(buffer)
         req = read_req(buffer)
 
-        response_header = meta.resp_header_class(
+        resp_cls = load_response_schema(api_key, api_version)
+        write_resp = entity_writer(resp_cls)
+        write_resp_header = entity_writer(resp_cls.__header_schema__)
+
+        response_header = resp_cls.__header_schema__(
             correlation_id=req_header.correlation_id
         )
 
         async def resp_func(resp: EntityType.response):
             resp_buffer = io.BytesIO()
-            meta.write_resp_header(resp_buffer, response_header)
-            meta.write_resp(resp_buffer, resp)
+            write_resp_header(resp_buffer, response_header)
+            write_resp(resp_buffer, resp)
             resp_bytes = resp_buffer.getvalue()
             writer.write(len(resp_bytes).to_bytes(4, "big") + resp_bytes)
             await writer.drain()

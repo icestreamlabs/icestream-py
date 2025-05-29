@@ -1,7 +1,9 @@
 import asyncio
-import pytest
 import threading
+
+import pytest
 from aiokafka import AIOKafkaProducer
+
 from kafkaserver.server import Server
 
 BOOTSTRAP_SERVERS = "localhost:9092"

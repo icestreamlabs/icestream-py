@@ -1,24 +1,26 @@
-from typing import Protocol, Callable, Any, Awaitable
+from typing import Any, Awaitable, Callable, Protocol
 
 from kio.schema.errors import ErrorCode
-from kafkaserver.messages import (
-    ProduceRequest,
-    ProduceRequestHeader,
-    ProduceResponse,
-    ProduceResponseHeader,
-    ApiVersionsRequest,
-    ApiVersionsResponse,
-    CreateTopicsRequest,
-    CreateTopicsResponse,
-    ApiVersionsResponseHeader,
-    CreateTopicsResponseHeader,
-    ApiVersionsRequestHeader,
-    CreateTopicsRequestHeader,
-)
+
 from kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
     MetadataResponse,
+)
+from kafkaserver.handlers.produce import (
+    ProduceRequest,
+    ProduceRequestHeader,
+    ProduceResponse,
+)
+from kafkaserver.messages import (
+    ApiVersionsRequest,
+    ApiVersionsRequestHeader,
+    ApiVersionsResponse,
+    ApiVersionsResponseHeader,
+    CreateTopicsRequest,
+    CreateTopicsRequestHeader,
+    CreateTopicsResponse,
+    CreateTopicsResponseHeader,
 )
 
 
