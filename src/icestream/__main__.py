@@ -2,6 +2,8 @@ import asyncio
 import functools
 import signal
 
+from icestream.config import Config
+from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
 from icestream.logger import log
 
@@ -20,8 +22,14 @@ async def run():
     functools.partial(loop.add_signal_handler, signal.SIGINT, _signal_handler)()
     functools.partial(loop.add_signal_handler, signal.SIGTERM, _signal_handler)()
 
+    config = Config()
+
     try:
-        server = Server()
+        log.info("Running DB migrations...")
+        await run_migrations(config)
+        log.info("Migrations complete.")
+
+        server = Server(config=config)
         server_handle = asyncio.create_task(server.run())
         done, pending = await asyncio.wait(
             [server_handle, asyncio.create_task(shutdown_event.wait())],

@@ -6,7 +6,7 @@ import uuid
 from asyncio import Server as AsyncIOServer
 from asyncio import StreamReader, StreamWriter
 from collections import defaultdict
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Sequence
 
 import kio.schema.api_versions.v0 as api_v0
 import kio.schema.api_versions.v1 as api_v1
@@ -36,7 +36,9 @@ from kio.schema.types import BrokerId, TopicName
 from kio.serial.readers import read_int32
 from kio.static.constants import EntityType
 from kio.static.primitive import i16, i32, i32Timedelta, i64
+from sqlalchemy.orm import selectinload
 
+from icestream.config import Config
 from icestream.kafkaserver.handler import api_compatibility, handle_kafka_request
 from icestream.kafkaserver.handlers import KafkaHandler
 from icestream.kafkaserver.handlers.api_versions import (
@@ -62,13 +64,18 @@ from icestream.kafkaserver.messages import (
 )
 from icestream.kafkaserver.metadata import MetadataProvider
 
+from sqlalchemy import select
+
+from icestream.models import Topic
+
 log = structlog.get_logger()
 
 
 class Server:
-    def __init__(self):
+    def __init__(self, config: Config):
         self.listener: AsyncIOServer | None = None
         self.metadata_provider = MetadataProvider()
+        self.config = config
 
     async def run(self, host: str = "127.0.0.1", port: int = 9092):
         try:
@@ -397,8 +404,19 @@ class Connection(KafkaHandler):
     ):
         log.info("handling metadata request", topics=[t.name for t in req.topics])
 
+        async with self.server.config.async_session_factory() as session:
+            topic_result: Sequence[Topic]
+            if not req.topics:
+                result = await session.execute(select(Topic).options(selectinload(Topic.partitions)))
+                topic_result = result.scalars().all()
+            else:
+                topic_names = [t.name for t in req.topics]
+                result = await session.execute(
+                    select(Topic).where(Topic.name.in_(topic_names)).options(selectinload(Topic.partitions))
+                )
+                topic_result = result.scalars().all()
+
         if not req.topics or req.topics == []:
-            # Per Kafka spec, empty list = "all topics"
             topic_names = list(self.offsets.keys())
         else:
             topic_names = [t.name for t in req.topics]
@@ -424,7 +442,7 @@ class Connection(KafkaHandler):
         # currently we're just storing stuff in a dictionary in memory
 
         topics: List[metadata_v6.response.MetadataResponseTopic] = []
-        for topic_name in topic_names:
+        for topic in topic_result:
             partition_metadata = [
                 metadata_v6.response.MetadataResponsePartition(
                     error_code=ErrorCode.none,
@@ -434,12 +452,12 @@ class Connection(KafkaHandler):
                     isr_nodes=(i32(0),),
                     offline_replicas=(),
                 )
-                for pidx in self.offsets[topic_name]
+                for pidx in self.offsets[topic.name]
             ]
             topics.append(
                 metadata_v6.response.MetadataResponseTopic(
                     error_code=ErrorCode.none,
-                    name=TopicName(topic_name),
+                    name=TopicName(topic.name),
                     is_internal=False,
                     partitions=tuple(partition_metadata),
                 )
