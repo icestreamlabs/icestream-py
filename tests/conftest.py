@@ -17,8 +17,8 @@ def wait_for_port(port, host="localhost", timeout=5.0):
 @pytest.fixture(scope="session", autouse=True)
 def start_icestream():
     proc = subprocess.Popen(["python", "-m", "icestream"])
-    wait_for_port(8080)  # AdminApi
-    wait_for_port(9092)  # Kafka Server (adjust as needed)
+    wait_for_port(8080)  # admin api
+    wait_for_port(9092)  # kafka
     yield
     proc.terminate()
     proc.wait()

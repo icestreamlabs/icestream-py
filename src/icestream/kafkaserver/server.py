@@ -404,26 +404,6 @@ class Connection(KafkaHandler):
     ):
         log.info("handling metadata request", topics=[t.name for t in req.topics])
 
-        # placeholder, just add requested topics to the db
-        # async with self.server.config.async_session_factory() as session:
-        #     for t in req.topics:
-        #         result = await session.execute(select(Topic).where(Topic.name == t.name))
-        #         topic = result.scalar_one_or_none()
-        #
-        #         if topic is None:
-        #             topic = Topic(name=t.name)
-        #             session.add(topic)
-        #             await session.flush()
-        #
-        #             for partition_number in range(3):
-        #                 partition = Partition(
-        #                     topic_id=topic.id,
-        #                     partition_number=partition_number,
-        #                     last_offset=-1
-        #                 )
-        #                 session.add(partition)
-        #
-        #     await session.commit()
 
         async with self.server.config.async_session_factory() as session:
             topic_result: Sequence[Topic]
@@ -448,7 +428,6 @@ class Connection(KafkaHandler):
 
         # we need to respect the topic list passed in by the request
         # in our case it'll get passed to postgres, but an empty list means all of them
-        # currently we're just storing stuff in a dictionary in memory
 
         topics: List[metadata_v6.response.MetadataResponseTopic] = []
         for topic in topic_result:
