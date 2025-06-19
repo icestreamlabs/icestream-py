@@ -66,7 +66,7 @@ from icestream.kafkaserver.metadata import MetadataProvider
 
 from sqlalchemy import select
 
-from icestream.models import Topic
+from icestream.models import Topic, Partition
 
 log = structlog.get_logger()
 
@@ -404,6 +404,27 @@ class Connection(KafkaHandler):
     ):
         log.info("handling metadata request", topics=[t.name for t in req.topics])
 
+        # placeholder, just add requested topics to the db
+        # async with self.server.config.async_session_factory() as session:
+        #     for t in req.topics:
+        #         result = await session.execute(select(Topic).where(Topic.name == t.name))
+        #         topic = result.scalar_one_or_none()
+        #
+        #         if topic is None:
+        #             topic = Topic(name=t.name)
+        #             session.add(topic)
+        #             await session.flush()
+        #
+        #             for partition_number in range(3):
+        #                 partition = Partition(
+        #                     topic_id=topic.id,
+        #                     partition_number=partition_number,
+        #                     last_offset=-1
+        #                 )
+        #                 session.add(partition)
+        #
+        #     await session.commit()
+
         async with self.server.config.async_session_factory() as session:
             topic_result: Sequence[Topic]
             if not req.topics:
@@ -415,18 +436,6 @@ class Connection(KafkaHandler):
                     select(Topic).where(Topic.name.in_(topic_names)).options(selectinload(Topic.partitions))
                 )
                 topic_result = result.scalars().all()
-
-        if not req.topics or req.topics == []:
-            topic_names = list(self.offsets.keys())
-        else:
-            topic_names = [t.name for t in req.topics]
-
-        # placeholder, just add all requested topics to the offsets dict
-        for t in req.topics:
-            if t.name not in self.offsets:
-                self.offsets[t.name] = defaultdict(int)
-                for partition in range(3):
-                    self.offsets[t.name][partition] = 0
 
         # get brokers
         # since we're stateless we might be able to get away with spoofing a single broker
@@ -446,13 +455,13 @@ class Connection(KafkaHandler):
             partition_metadata = [
                 metadata_v6.response.MetadataResponsePartition(
                     error_code=ErrorCode.none,
-                    partition_index=i32(pidx),
+                    partition_index=i32(pidx.partition_number),
                     leader_id=i32(0),
                     replica_nodes=(i32(0),),
                     isr_nodes=(i32(0),),
                     offline_replicas=(),
                 )
-                for pidx in self.offsets[topic.name]
+                for pidx in topic.partitions
             ]
             topics.append(
                 metadata_v6.response.MetadataResponseTopic(
