@@ -2,7 +2,7 @@ import pytest
 from aiokafka import AIOKafkaProducer
 
 TEST_TOPIC = "test_topic"
-BOOTSTRAP_SERVERS = "localhost:9092"  # adjust if needed
+BOOTSTRAP_SERVERS = "localhost:9092"
 
 @pytest.mark.asyncio
 async def test_produce_single_message(http_client):
