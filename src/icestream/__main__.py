@@ -5,6 +5,8 @@ import signal
 from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
+from icestream.kafkaserver.types import ProduceTopicPartitionData
+from icestream.kafkaserver.wal.manager import WALManager
 from icestream.logger import log
 
 from icestream.admin import AdminApi
@@ -34,7 +36,11 @@ async def run():
         await run_migrations(config)
         log.info("Migrations complete.")
 
-        server = Server(config=config)
+        queue = asyncio.Queue[ProduceTopicPartitionData]()
+        wal_manager = WALManager(config, queue)
+        await wal_manager.start()
+
+        server = Server(config=config, queue=queue)
         server_handle = asyncio.create_task(server.run())
 
         admin_api = AdminApi(config)

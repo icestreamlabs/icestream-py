@@ -62,20 +62,20 @@ from icestream.kafkaserver.messages import (
     CreateTopicsRequestHeader,
     CreateTopicsResponse,
 )
-from icestream.kafkaserver.metadata import MetadataProvider
 
 from sqlalchemy import select
 
-from icestream.models import Topic, Partition
+from icestream.kafkaserver.types import ProduceTopicPartitionData
+from icestream.models import Topic
 
 log = structlog.get_logger()
 
 
 class Server:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, queue: asyncio.Queue[ProduceTopicPartitionData]):
         self.listener: AsyncIOServer | None = None
-        self.metadata_provider = MetadataProvider()
         self.config = config
+        self.produce_queue = queue
 
     async def run(self, host: str = "127.0.0.1", port: int = 9092):
         try:
@@ -92,7 +92,6 @@ class Server:
 class Connection(KafkaHandler):
     def __init__(self, s: Server):
         self.server: Server = s
-        self.offsets: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
 
     async def __call__(self, reader: StreamReader, writer: StreamWriter) -> None:
         try:
@@ -132,6 +131,9 @@ class Connection(KafkaHandler):
                 error_code: ErrorCode | None = None
                 if magic != 2:
                     error_code = ErrorCode.unsupported_for_message_format
+                    error_resp = self.produce_request_error_response(error_code, "", req, api_version)
+                    await callback(error_resp)
+                    return
                 log.info("produce", records=records[61:])
 
                 log.info(

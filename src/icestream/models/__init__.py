@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Integer, Identity, String, ForeignKey, BigInteger, TIMESTAMP, Text, Boolean, text
+from sqlalchemy import Integer, Identity, String, ForeignKey, BigInteger, TIMESTAMP, Text, Boolean, text, Index, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
@@ -44,14 +44,21 @@ class Topic(Base, IntIdMixin, TimestampMixin):
 class Partition(Base, IntIdMixin, TimestampMixin):
     __tablename__ = "partitions"
 
-    topic_id: Mapped[int] = mapped_column(
-        ForeignKey("topics.id", ondelete="CASCADE"), nullable=False
+    topic_name: Mapped[str] = mapped_column(
+        String, ForeignKey("topics.name", ondelete="CASCADE"),
+        nullable=False,
     )
+
     partition_number: Mapped[int] = mapped_column(Integer, nullable=False)
     last_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=-1)
 
     topic: Mapped["Topic"] = relationship(back_populates="partitions")
     wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(back_populates="partition")
+
+    __table_args__ = (
+        UniqueConstraint("topic_name", "partition_number"),
+        Index("ix_partition_topic_partition", "topic_name", "partition_number"),
+    )
 
 
 class WALFile(Base, BigIntIdMixin, TimestampMixin):

@@ -8,9 +8,18 @@ from sqlalchemy.pool import StaticPool
 
 class Config:
     def __init__(self):
+        # db
         self.DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
         self.async_session_factory: async_sessionmaker[AsyncSession] | None = None
         self.engine = None
+
+        # s3
+        self.WAL_BUCKET = os.getenv("WAL_BUCKET", "icestream-wal")
+        self.S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://localhost:4566")
+        self.REGION = os.getenv("REGION", "us-east-1")
+
+        # wal
+        self.FLUSH_INTERVAL = int(os.getenv("FLUSH_INTERVAL", "2"))
 
         self.create_engine()
 
