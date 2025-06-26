@@ -51,6 +51,7 @@ class Partition(Base, IntIdMixin, TimestampMixin):
 
     partition_number: Mapped[int] = mapped_column(Integer, nullable=False)
     last_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=-1)
+    log_start_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     topic: Mapped["Topic"] = relationship(back_populates="partitions")
     wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(back_populates="partition")

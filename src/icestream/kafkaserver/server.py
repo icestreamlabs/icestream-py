@@ -5,7 +5,6 @@ import struct
 import uuid
 from asyncio import Server as AsyncIOServer
 from asyncio import StreamReader, StreamWriter
-from collections import defaultdict
 from typing import Any, Callable, List, Sequence
 
 import kio.schema.api_versions.v0 as api_v0
@@ -36,6 +35,7 @@ from kio.schema.types import BrokerId, TopicName
 from kio.serial.readers import read_int32
 from kio.static.constants import EntityType
 from kio.static.primitive import i16, i32, i32Timedelta, i64
+from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 
 from icestream.config import Config
@@ -66,7 +66,7 @@ from icestream.kafkaserver.messages import (
 from sqlalchemy import select
 
 from icestream.kafkaserver.types import ProduceTopicPartitionData
-from icestream.models import Topic
+from icestream.models import Topic, Partition
 
 log = structlog.get_logger()
 
@@ -121,8 +121,8 @@ class Connection(KafkaHandler):
             partition_responses: List[produce_v8.response.PartitionProduceResponse] = []
 
             for partition in topic.partition_data:
-                idx = partition.index
-                curr_offset = self.offsets[topic_name][idx]
+                partition_idx = partition.index
+                curr_offset = self.offsets[topic_name][partition_idx]
                 record_count = 0
                 records = partition.records
                 if records is not None:
@@ -131,23 +131,72 @@ class Connection(KafkaHandler):
                 error_code: ErrorCode | None = None
                 if magic != 2:
                     error_code = ErrorCode.unsupported_for_message_format
-                    error_resp = self.produce_request_error_response(error_code, "", req, api_version)
-                    await callback(error_resp)
-                    return
+                    partition_response = produce_v8.response.PartitionProduceResponse(
+                        index=i32(partition_idx),
+                        error_code=ErrorCode.none if error_code is None else error_code,
+                        base_offset=i64(-1), # magic number wrong, so no offsets assigned
+                        log_append_time=None,
+                        log_start_offset=i64(-1),
+                        record_errors=(),
+                        error_message="wrong magic number",
+                    )
+                    partition_responses.append(partition_response)
+                    continue
+
                 log.info("produce", records=records[61:])
 
                 log.info(
                     "produce",
                     topic=topic_name,
-                    partition=idx,
+                    partition=partition_idx,
                     offset=curr_offset,
                     num_records=record_count,
                 )
 
-                self.offsets[topic_name][idx] += record_count
+                if record_count == 0:
+                    partition_response = produce_v8.response.PartitionProduceResponse(
+                        index=i32(partition_idx),
+                        error_code=ErrorCode.none if error_code is None else error_code,
+                        base_offset=i64(-1), # no records so no offsets assigned
+                        log_append_time=None,
+                        log_start_offset=i64(-1),
+                        record_errors=(),
+                        error_message=None,
+                    )
+                    partition_responses.append(partition_response)
+                    continue
+
+                # allocate the offsets
+                async with self.server.config.async_session_factory() as session:
+                    result = await session.execute(
+                        update(Partition)
+                        .where(
+                            Partition.topic_name == topic_name,
+                            Partition.partition_number == partition_idx
+                        )
+                        .values(last_offset=Partition.last_offset + record_count)
+                        .returning(Partition.id, Partition.last_offset)
+                    )
+                    row = result.first()
+                    # if the row is none, it's probably because there's no topic or partition for it
+                    if row is None:
+                        error_code = ErrorCode.unknown_topic_or_partition
+                        partition_response = produce_v8.response.PartitionProduceResponse(
+                            index=i32(partition_idx),
+                            error_code=ErrorCode.none if error_code is None else error_code,
+                            base_offset=i64(-1), # likely no topic/partition, so no offsets assigned
+                            log_append_time=None,
+                            log_start_offset=i64(-1),
+                            record_errors=(),
+                            error_message="unknown topic or partition",
+                        )
+                        partition_responses.append(partition_response)
+                        continue
+                    _, last_offset = row
+                    first_offset = last_offset - record_count + 1
 
                 partition_response = produce_v8.response.PartitionProduceResponse(
-                    index=i32(idx),
+                    index=i32(partition_idx),
                     error_code=ErrorCode.none if error_code is None else error_code,
                     base_offset=i64(curr_offset),
                     log_append_time=None,
