@@ -36,7 +36,7 @@ async def run():
         await run_migrations(config)
         log.info("Migrations complete.")
 
-        queue = asyncio.Queue[ProduceTopicPartitionData]()
+        queue = asyncio.Queue[ProduceTopicPartitionData](maxsize=2000)
         wal_manager = WALManager(config, queue)
         await wal_manager.start()
 

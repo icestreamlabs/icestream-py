@@ -2,9 +2,10 @@ import asyncio
 from dataclasses import dataclass
 
 
+
 @dataclass
 class ProduceTopicPartitionData:
     topic: str
     partition: int
-    batch_bytes: bytes
-    flush_result: asyncio.Future[None]
+    kafka_record_batch: KafkaRecordBatch
+    flush_result: asyncio.Future[bool]

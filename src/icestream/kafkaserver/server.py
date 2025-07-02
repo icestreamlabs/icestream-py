@@ -3,7 +3,7 @@ import datetime
 import io
 import struct
 import uuid
-from asyncio import Server as AsyncIOServer
+from asyncio import Server as AsyncIOServer, Future
 from asyncio import StreamReader, StreamWriter
 from typing import Any, Callable, List, Sequence
 
@@ -95,7 +95,7 @@ class Connection(KafkaHandler):
 
     async def __call__(self, reader: StreamReader, writer: StreamWriter) -> None:
         try:
-            while not reader.at_eof():
+            while True:
                 msg_length_bytes = await reader.readexactly(4)
                 msg_length = read_int32(io.BytesIO(msg_length_bytes))
                 message = await reader.readexactly(msg_length)
@@ -106,6 +106,13 @@ class Connection(KafkaHandler):
             log.info(f"client disconnected with error: {e}")
         except Exception as e:
             log.error(f"error handling connection {e}")
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+                log.info("connection closed")
+            except Exception as e:
+                log.error(f"error closing writer: {e}")
 
     async def handle_produce_request(
         self,
@@ -122,11 +129,11 @@ class Connection(KafkaHandler):
 
             for partition in topic.partition_data:
                 partition_idx = partition.index
-                curr_offset = self.offsets[topic_name][partition_idx]
                 record_count = 0
                 records = partition.records
                 if records is not None:
                     record_count = int(struct.unpack(">I", records[57:61])[0])
+                records_data = records[61:]
                 magic = records[16]
                 error_code: ErrorCode | None = None
                 if magic != 2:
@@ -149,7 +156,6 @@ class Connection(KafkaHandler):
                     "produce",
                     topic=topic_name,
                     partition=partition_idx,
-                    offset=curr_offset,
                     num_records=record_count,
                 )
 
@@ -175,7 +181,7 @@ class Connection(KafkaHandler):
                             Partition.partition_number == partition_idx
                         )
                         .values(last_offset=Partition.last_offset + record_count)
-                        .returning(Partition.id, Partition.last_offset)
+                        .returning(Partition.id, Partition.last_offset, Partition.log_start_offset)
                     )
                     row = result.first()
                     # if the row is none, it's probably because there's no topic or partition for it
@@ -192,15 +198,30 @@ class Connection(KafkaHandler):
                         )
                         partition_responses.append(partition_response)
                         continue
-                    _, last_offset = row
+                    _, last_offset, log_start_offset = row
                     first_offset = last_offset - record_count + 1
+
+                # need to send the message batch over to the WALManager via self.server.produce_queue (asyncio.Queue)
+                # but with a future so that this part that's creating the PartitionProduceResponse can wait for the response from the WALManager
+                # but at the end need to append the PartitionProduceResponse to the `partition_responses` list.
+                partition_flush_result_fut = Future()
+                produce_topic_partition_data = ProduceTopicPartitionData(
+                    topic=topic_name,
+                    partition=partition_idx,
+                    base_offset=first_offset,
+                    record_count=record_count,
+                    batch_bytes=records_data,
+                    flush_result=partition_flush_result_fut
+                )
+                await self.server.produce_queue.put(produce_topic_partition_data)
+                flush_result = await partition_flush_result_fut
 
                 partition_response = produce_v8.response.PartitionProduceResponse(
                     index=i32(partition_idx),
                     error_code=ErrorCode.none if error_code is None else error_code,
-                    base_offset=i64(curr_offset),
-                    log_append_time=None,
-                    log_start_offset=i64(-1),
+                    base_offset=i64(first_offset),
+                    log_append_time=None, # TODO
+                    log_start_offset=i64(log_start_offset),
                     record_errors=(),
                     error_message=None,
                 )

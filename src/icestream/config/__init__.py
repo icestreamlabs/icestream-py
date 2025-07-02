@@ -19,7 +19,8 @@ class Config:
         self.REGION = os.getenv("REGION", "us-east-1")
 
         # wal
-        self.FLUSH_INTERVAL = int(os.getenv("FLUSH_INTERVAL", "2"))
+        self.FLUSH_INTERVAL = int(os.getenv("FLUSH_INTERVAL", 2))
+        self.FLUSH_SIZE = int(os.getenv("FLUSH_SIZE", 100 * 1024 * 1024))
 
         self.create_engine()
 

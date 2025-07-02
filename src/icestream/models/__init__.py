@@ -90,5 +90,8 @@ class WALFileOffset(Base, BigIntIdMixin):
     base_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
     last_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
+    byte_start: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    byte_end: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
     wal_file: Mapped["WALFile"] = relationship(back_populates="wal_file_offsets")
     partition: Mapped["Partition"] = relationship(back_populates="wal_file_offsets")
