@@ -1,20 +1,19 @@
 from dataclasses import dataclass
 from typing import List
 
+from icestream.kafkaserver.protocol import KafkaRecordBatch
+
 
 @dataclass
-class DecodedBatch:
+class WALBatch:
     topic: str
     partition: int
-    base_offset: int
-    record_count: int
-    compression: int
-    uncompressed_size: int
-    batch_bytes: bytes
+    kafka_record_batch: KafkaRecordBatch
+
 
 @dataclass
-class DecodedWALFile:
+class WALFile:
     version: int
     flushed_at: int
     broker_id: str
-    batches: List[DecodedBatch]
+    batches: List[WALBatch]

@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import logging
 import signal
 
 from icestream.config import Config
@@ -19,6 +20,7 @@ async def run():
     shutdown_event = asyncio.Event()
     server_handle = None
     api_handle = None
+    wal_manager_handle = None
 
     def _signal_handler(*_):
         log.warning("shutdown signal received")
@@ -38,7 +40,7 @@ async def run():
 
         queue = asyncio.Queue[ProduceTopicPartitionData](maxsize=2000)
         wal_manager = WALManager(config, queue)
-        await wal_manager.start()
+        wal_manager_handle = asyncio.create_task(wal_manager.run())
 
         server = Server(config=config, queue=queue)
         server_handle = asyncio.create_task(server.run())
@@ -48,10 +50,11 @@ async def run():
         hypercorn_config.bind = ["0.0.0.0:8080"]
         hypercorn_config.use_reloader = False
         hypercorn_config.loglevel = "info"
+        logging.getLogger("hypercorn.error").propagate = False
 
         api_handle = asyncio.create_task(hypercorn_serve(admin_api.app, hypercorn_config))
         done, pending = await asyncio.wait(
-            [server_handle, api_handle, asyncio.create_task(shutdown_event.wait())],
+            [server_handle, api_handle, wal_manager_handle, asyncio.create_task(shutdown_event.wait())],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
@@ -61,19 +64,19 @@ async def run():
 
     except asyncio.CancelledError:
         log.info("Received asyncio.CancelledError, shutting down gracefully...")
-    except Exception:
-        log.exception("error during server setup or runtime")
+    except Exception as e:
+        log.exception(f"error during server setup or runtime {e}")
     finally:
         log.info("shutting down")
-        for task in [server_handle, api_handle]:
+        for task in [server_handle, api_handle, wal_manager_handle]:
             if task and not task.done():
                 task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     log.info("task cancelled")
-                except Exception:
-                    log.exception("error during task shutdown")
+                except Exception as e:
+                    log.exception(f"error during task shutdown {e}")
         log.info("shutdown complete")
 
 

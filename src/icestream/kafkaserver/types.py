@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 
+from icestream.kafkaserver.protocol import KafkaRecordBatch
 
 
 @dataclass

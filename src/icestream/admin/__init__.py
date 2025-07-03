@@ -44,7 +44,7 @@ class AdminApi:
 
             for idx in range(data.num_partitions):
                 session.add(Partition(
-                    topic_id=new_topic.id,
+                    topic_name=new_topic.name,
                     partition_number=idx,
                     last_offset=-1
                 ))

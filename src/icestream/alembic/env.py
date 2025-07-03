@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import Task
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -54,9 +55,14 @@ async def run_async_migrations() -> None:
     await connectable.dispose()
 
 
-def run_migrations_online() -> None:
+def run_migrations_online() -> Task[None] | None:
     """Dispatch to online or offline mode."""
-    asyncio.run(run_async_migrations())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(run_async_migrations())
+    else:
+        return loop.create_task(run_async_migrations())
 
 
 if context.is_offline_mode():
