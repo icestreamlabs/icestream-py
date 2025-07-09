@@ -6,8 +6,9 @@ from typing import List
 
 from icestream.config import Config
 from icestream.kafkaserver.types import ProduceTopicPartitionData
-from icestream.kafkaserver.wal.serde import encode_kafka_wal_file
+from icestream.kafkaserver.wal.serde import encode_kafka_wal_file_with_offsets
 from icestream.logger import log
+from icestream.models import WALFile, WALFileOffset
 
 
 class WALManager:
@@ -60,7 +61,9 @@ class WALManager:
     async def _flush(self, batch_to_flush: List[ProduceTopicPartitionData]):
         try:
             async with self.flush_semaphore:
-                encoded = encode_kafka_wal_file(batch_to_flush, broker_id="foo")  # TODO
+                encoded, offsets = encode_kafka_wal_file_with_offsets(
+                    batch_to_flush, broker_id="foo"  # TODO
+                )
                 object_key = self._generate_object_key()
                 log.info(
                     f"WALManager encoded {len(encoded)} bytes for {len(batch_to_flush)} batches"
@@ -73,11 +76,38 @@ class WALManager:
                 )
                 log.info(f"put_result {put_result}")
 
+                async with self.config.async_session_factory() as session:
+                    total_records = sum(o["last_offset"] - o["base_offset"] + 1 for o in offsets)
+
+                    wal_file = WALFile(
+                        uri=object_key,
+                        etag=getattr(put_result, "etag", None),
+                        total_bytes=len(encoded),
+                        total_messages=total_records,
+                    )
+                    session.add(wal_file)
+                    await session.flush()  # get wal_file.id
+
+                    for o in offsets:
+                        wal_file_offset = WALFileOffset(
+                            wal_file_id=wal_file.id,
+                            topic_name=o["topic"],
+                            partition_number=o["partition"],
+                            base_offset=o["base_offset"],
+                            last_offset=o["last_offset"],
+                            byte_start=o["byte_start"],
+                            byte_end=o["byte_end"],
+                        )
+                        session.add(wal_file_offset)
+
+                    await session.commit()
+
                 for item in batch_to_flush:
                     if not item.flush_result.done():
                         item.flush_result.set_result(True)
 
                 log.info("WALManager flushed successfully")
+
         except Exception as e:
             log.exception("WALManager flush failed")
             for item in batch_to_flush:

@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from alembic import command
