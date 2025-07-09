@@ -28,7 +28,7 @@ class IntIdMixin:
 
 
 class BigIntIdMixin:
-    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(always=True), primary_key=True)
 
 
 class TimestampMixin:
