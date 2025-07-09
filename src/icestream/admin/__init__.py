@@ -1,15 +1,18 @@
 from typing import AsyncGenerator, Callable
-from fastapi import FastAPI, Depends, HTTPException
+
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from icestream.models import Topic, Partition
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from icestream.config import Config
+from icestream.models import Partition, Topic
 
 
 class TopicCreate(BaseModel):
     name: str
     num_partitions: int = 3
+
 
 class TopicResponse(BaseModel):
     id: int
@@ -28,6 +31,7 @@ class AdminApi:
                 yield session
 
         return _get_session_inner
+
     def _add_routes(self):
         @self.app.post("/topics", response_model=TopicResponse, status_code=201)
         async def create_topic(
@@ -43,11 +47,11 @@ class AdminApi:
             await session.flush()
 
             for idx in range(data.num_partitions):
-                session.add(Partition(
-                    topic_name=new_topic.name,
-                    partition_number=idx,
-                    last_offset=-1
-                ))
+                session.add(
+                    Partition(
+                        topic_name=new_topic.name, partition_number=idx, last_offset=-1
+                    )
+                )
             await session.commit()
 
             return TopicResponse(id=new_topic.id, name=new_topic.name)

@@ -1,7 +1,7 @@
-from typing import Self
 import struct
 from dataclasses import dataclass
 from io import BytesIO
+from typing import Self
 
 
 @dataclass
@@ -38,10 +38,23 @@ class KafkaRecordBatch:
         producer_epoch = struct.unpack(">h", buf.read(2))[0]
         base_sequence = struct.unpack(">i", buf.read(4))[0]
         records_count = struct.unpack(">i", buf.read(4))[0]
-        records = buf.read(batch_length - (buf.tell() - 12))  # 12 = base_offset(8) + batch_length(4)
+        records = buf.read(
+            batch_length - (buf.tell() - 12)
+        )  # 12 = base_offset(8) + batch_length(4)
 
         return KafkaRecordBatch(
-            base_offset, batch_length, partition_leader_epoch, magic, crc, attributes,
-            last_offset_delta, base_timestamp, max_timestamp, producer_id, producer_epoch,
-            base_sequence, records_count, records
+            base_offset,
+            batch_length,
+            partition_leader_epoch,
+            magic,
+            crc,
+            attributes,
+            last_offset_delta,
+            base_timestamp,
+            max_timestamp,
+            producer_id,
+            producer_epoch,
+            base_sequence,
+            records_count,
+            records,
         )

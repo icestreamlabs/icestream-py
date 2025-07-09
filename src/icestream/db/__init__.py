@@ -1,12 +1,11 @@
 import asyncio
 import os
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy.engine.url import make_url
 
 from icestream.config import Config as IcestreamConfig
-from alembic.config import Config
-from alembic import command
-
 from icestream.models import Base
 
 

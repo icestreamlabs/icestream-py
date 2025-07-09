@@ -3,8 +3,8 @@ import datetime
 import io
 import struct
 import uuid
-from asyncio import Server as AsyncIOServer, Future
-from asyncio import StreamReader, StreamWriter
+from asyncio import Future, StreamReader, StreamWriter
+from asyncio import Server as AsyncIOServer
 from typing import Any, Callable, List, Sequence
 
 import kio.schema.api_versions.v0 as api_v0
@@ -35,7 +35,7 @@ from kio.schema.types import BrokerId, TopicName
 from kio.serial.readers import read_int32
 from kio.static.constants import EntityType
 from kio.static.primitive import i16, i32, i32Timedelta, i64
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from icestream.config import Config
@@ -62,12 +62,9 @@ from icestream.kafkaserver.messages import (
     CreateTopicsRequestHeader,
     CreateTopicsResponse,
 )
-
-from sqlalchemy import select
-
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
-from icestream.models import Topic, Partition
+from icestream.models import Partition, Topic
 
 log = structlog.get_logger()
 
@@ -116,11 +113,11 @@ class Connection(KafkaHandler):
                 log.error(f"error closing writer: {e}")
 
     async def handle_produce_request(
-            self,
-            header: ProduceRequestHeader,
-            req: ProduceRequest,
-            api_version: int,
-            callback: Callable[[ProduceResponse], Any],
+        self,
+        header: ProduceRequestHeader,
+        req: ProduceRequest,
+        api_version: int,
+        callback: Callable[[ProduceResponse], Any],
     ):
         topic_responses: List[produce_v8.response.TopicProduceResponse] = []
 
@@ -142,7 +139,9 @@ class Connection(KafkaHandler):
                     partition_response = produce_v8.response.PartitionProduceResponse(
                         index=i32(partition_idx),
                         error_code=ErrorCode.none if error_code is None else error_code,
-                        base_offset=i64(-1),  # magic number wrong, so no offsets assigned
+                        base_offset=i64(
+                            -1
+                        ),  # magic number wrong, so no offsets assigned
                         log_append_time=None,
                         log_start_offset=i64(-1),
                         record_errors=(),
@@ -179,10 +178,14 @@ class Connection(KafkaHandler):
                         update(Partition)
                         .where(
                             Partition.topic_name == topic_name,
-                            Partition.partition_number == partition_idx
+                            Partition.partition_number == partition_idx,
                         )
                         .values(last_offset=Partition.last_offset + record_count)
-                        .returning(Partition.id, Partition.last_offset, Partition.log_start_offset)
+                        .returning(
+                            Partition.id,
+                            Partition.last_offset,
+                            Partition.log_start_offset,
+                        )
                     )
                     await session.commit()
                 row = result.first()
@@ -192,7 +195,9 @@ class Connection(KafkaHandler):
                     partition_response = produce_v8.response.PartitionProduceResponse(
                         index=i32(partition_idx),
                         error_code=ErrorCode.none if error_code is None else error_code,
-                        base_offset=i64(-1),  # likely no topic/partition, so no offsets assigned
+                        base_offset=i64(
+                            -1
+                        ),  # likely no topic/partition, so no offsets assigned
                         log_append_time=None,
                         log_start_offset=i64(-1),
                         record_errors=(),
@@ -211,12 +216,15 @@ class Connection(KafkaHandler):
                     topic=topic_name,
                     partition=partition_idx,
                     kafka_record_batch=KafkaRecordBatch.from_bytes(records),
-                    flush_result=partition_flush_result_fut
+                    flush_result=partition_flush_result_fut,
                 )
                 await self.server.produce_queue.put(produce_topic_partition_data)
 
                 try:
-                    await asyncio.wait_for(partition_flush_result_fut, timeout=self.server.config.FLUSH_INTERVAL * 2)
+                    await asyncio.wait_for(
+                        partition_flush_result_fut,
+                        timeout=self.server.config.FLUSH_INTERVAL * 2,
+                    )
                     # success
                 except asyncio.CancelledError:
                     error_code = ErrorCode.unknown_server_error
@@ -450,11 +458,11 @@ class Connection(KafkaHandler):
             log.error(f"Unsupported produce version: {api_version}")
 
     def produce_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: ProduceRequest,
-            api_version: int,
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ProduceRequest,
+        api_version: int,
     ) -> ProduceResponse:
         # v8 has error_message and record_errors in the PartitionProduceResponse, ignore it for now
         mod = load_payload_module(0, api_version, EntityType.response)
@@ -477,23 +485,27 @@ class Connection(KafkaHandler):
         return resp
 
     async def handle_metadata_request(
-            self,
-            header: MetadataRequestHeader,
-            req: MetadataRequest,
-            api_version: int,
-            callback: Callable[[MetadataResponse], Any],
+        self,
+        header: MetadataRequestHeader,
+        req: MetadataRequest,
+        api_version: int,
+        callback: Callable[[MetadataResponse], Any],
     ):
         log.info("handling metadata request", topics=[t.name for t in req.topics])
 
         async with self.server.config.async_session_factory() as session:
             topic_result: Sequence[Topic]
             if not req.topics:
-                result = await session.execute(select(Topic).options(selectinload(Topic.partitions)))
+                result = await session.execute(
+                    select(Topic).options(selectinload(Topic.partitions))
+                )
                 topic_result = result.scalars().all()
             else:
                 topic_names = [t.name for t in req.topics]
                 result = await session.execute(
-                    select(Topic).where(Topic.name.in_(topic_names)).options(selectinload(Topic.partitions))
+                    select(Topic)
+                    .where(Topic.name.in_(topic_names))
+                    .options(selectinload(Topic.partitions))
                 )
                 topic_result = result.scalars().all()
 
@@ -749,11 +761,11 @@ class Connection(KafkaHandler):
             pass
 
     def metadata_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: MetadataRequest,
-            api_version: int,
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: MetadataRequest,
+        api_version: int,
     ) -> MetadataResponse:
         # there's no point in returning brokers because there's no error code
         # similarly there's no point in populating the topic partitions
@@ -770,11 +782,11 @@ class Connection(KafkaHandler):
         return response_class(brokers=(), topics=tuple(_topics))
 
     async def handle_api_versions_request(
-            self,
-            header: ApiVersionsRequestHeader,
-            req: ApiVersionsRequest,
-            api_version: int,
-            callback: Callable[[ApiVersionsResponse], Any],
+        self,
+        header: ApiVersionsRequestHeader,
+        req: ApiVersionsRequest,
+        api_version: int,
+        callback: Callable[[ApiVersionsResponse], Any],
     ):
         versions = tuple(
             api_v4.response.ApiVersion(
@@ -794,18 +806,25 @@ class Connection(KafkaHandler):
         )
         if api_version == 0:
             _versions = tuple(
-                api_v0.response.ApiVersion(api_key=_version.api_key, min_version=_version.min_version,
-                                           max_version=_version.max_version) for _version in response.api_keys
+                api_v0.response.ApiVersion(
+                    api_key=_version.api_key,
+                    min_version=_version.min_version,
+                    max_version=_version.max_version,
+                )
+                for _version in response.api_keys
             )
             _response = api_v0.response.ApiVersionsResponse(
-                error_code=response.error_code,
-                api_keys=_versions
+                error_code=response.error_code, api_keys=_versions
             )
             await callback(_response)
         elif api_version == 1:
             _versions = tuple(
-                api_v1.response.ApiVersion(api_key=_version.api_key, min_version=_version.min_version,
-                                           max_version=_version.max_version) for _version in response.api_keys
+                api_v1.response.ApiVersion(
+                    api_key=_version.api_key,
+                    min_version=_version.min_version,
+                    max_version=_version.max_version,
+                )
+                for _version in response.api_keys
             )
             _response = api_v1.response.ApiVersionsResponse(
                 error_code=response.error_code,
@@ -815,8 +834,12 @@ class Connection(KafkaHandler):
             await callback(_response)
         elif api_version == 2:
             _versions = tuple(
-                api_v2.response.ApiVersion(api_key=_version.api_key, min_version=_version.min_version,
-                                           max_version=_version.max_version) for _version in response.api_keys
+                api_v2.response.ApiVersion(
+                    api_key=_version.api_key,
+                    min_version=_version.min_version,
+                    max_version=_version.max_version,
+                )
+                for _version in response.api_keys
             )
             _response = api_v2.response.ApiVersionsResponse(
                 error_code=response.error_code,
@@ -826,8 +849,12 @@ class Connection(KafkaHandler):
             await callback(_response)
         elif api_version == 3:
             _versions = tuple(
-                api_v3.response.ApiVersion(api_key=_version.api_key, min_version=_version.min_version,
-                                           max_version=_version.max_version) for _version in response.api_keys
+                api_v3.response.ApiVersion(
+                    api_key=_version.api_key,
+                    min_version=_version.min_version,
+                    max_version=_version.max_version,
+                )
+                for _version in response.api_keys
             )
             _response = api_v3.response.ApiVersionsResponse(
                 error_code=response.error_code,
@@ -836,7 +863,7 @@ class Connection(KafkaHandler):
                 supported_features=response.supported_features,
                 finalized_features_epoch=response.finalized_features_epoch,
                 finalized_features=response.finalized_features,
-                zk_migration_ready=response.zk_migration_ready
+                zk_migration_ready=response.zk_migration_ready,
             )
             await callback(_response)
         elif api_version == 4:
@@ -845,11 +872,11 @@ class Connection(KafkaHandler):
             log.error(f"unsupported api versions version: {api_version}")
 
     def api_versions_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: ApiVersionsRequest,
-            api_version: int,
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ApiVersionsRequest,
+        api_version: int,
     ) -> ApiVersionsResponse:
         mod = load_payload_module(18, api_version, EntityType.response)
         return mod.ApiVersionsResponse(
@@ -858,11 +885,11 @@ class Connection(KafkaHandler):
         )
 
     async def handle_create_topics_request(
-            self,
-            header: CreateTopicsRequestHeader,
-            req: CreateTopicsRequest,
-            api_version: int,
-            callback: Callable[[CreateTopicsResponse], Any],
+        self,
+        header: CreateTopicsRequestHeader,
+        req: CreateTopicsRequest,
+        api_version: int,
+        callback: Callable[[CreateTopicsResponse], Any],
     ):
         results = []
 
@@ -885,16 +912,16 @@ class Connection(KafkaHandler):
 
         response = CreateTopicsResponse(
             throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
-            topics=tuple(results)
+            topics=tuple(results),
         )
         await callback(response)
 
     def create_topics_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: CreateTopicsRequest,
-            api_version: int,
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: CreateTopicsRequest,
+        api_version: int,
     ) -> CreateTopicsResponse:
         results = []
 
@@ -913,5 +940,5 @@ class Connection(KafkaHandler):
 
         return CreateTopicsResponse(
             throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
-            topics=tuple(results)
+            topics=tuple(results),
         )

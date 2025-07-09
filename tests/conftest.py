@@ -1,8 +1,10 @@
-import pytest
-import subprocess
 import socket
+import subprocess
 import time
+
 import httpx
+import pytest
+
 
 def wait_for_port(port, host="localhost", timeout=5.0):
     start = time.time()
@@ -14,6 +16,7 @@ def wait_for_port(port, host="localhost", timeout=5.0):
             time.sleep(0.1)
     raise TimeoutError(f"Server not available on {host}:{port}")
 
+
 @pytest.fixture(scope="session", autouse=True)
 def start_icestream():
     proc = subprocess.Popen(["python", "-m", "icestream"])
@@ -22,6 +25,7 @@ def start_icestream():
     yield
     proc.terminate()
     proc.wait()
+
 
 @pytest.fixture
 async def http_client(start_icestream):

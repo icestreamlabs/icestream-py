@@ -3,17 +3,16 @@ import functools
 import logging
 import signal
 
+from hypercorn.asyncio import serve as hypercorn_serve
+from hypercorn.config import Config as HypercornConfig
+
+from icestream.admin import AdminApi
 from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.wal.manager import WALManager
 from icestream.logger import log
-
-from icestream.admin import AdminApi
-
-from hypercorn.config import Config as HypercornConfig
-from hypercorn.asyncio import serve as hypercorn_serve
 
 
 async def run():
@@ -52,9 +51,16 @@ async def run():
         hypercorn_config.loglevel = "info"
         logging.getLogger("hypercorn.error").propagate = False
 
-        api_handle = asyncio.create_task(hypercorn_serve(admin_api.app, hypercorn_config))
+        api_handle = asyncio.create_task(
+            hypercorn_serve(admin_api.app, hypercorn_config)
+        )
         done, pending = await asyncio.wait(
-            [server_handle, api_handle, wal_manager_handle, asyncio.create_task(shutdown_event.wait())],
+            [
+                server_handle,
+                api_handle,
+                wal_manager_handle,
+                asyncio.create_task(shutdown_event.wait()),
+            ],
             return_when=asyncio.FIRST_COMPLETED,
         )
 

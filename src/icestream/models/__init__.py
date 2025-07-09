@@ -1,35 +1,45 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Integer, Identity, String, ForeignKey, BigInteger, TIMESTAMP, Text, Boolean, text, Index, UniqueConstraint
+
+from sqlalchemy import (
+    TIMESTAMP,
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
 
 class Base(DeclarativeBase):
     pass
 
 
 class IntIdMixin:
-    id: Mapped[int] = mapped_column(
-        Integer, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
 
 
 class BigIntIdMixin:
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
 
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
-        nullable=False
+        nullable=False,
     )
 
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
-        nullable=False
+        nullable=False,
     )
 
 
@@ -45,7 +55,8 @@ class Partition(Base, IntIdMixin, TimestampMixin):
     __tablename__ = "partitions"
 
     topic_name: Mapped[str] = mapped_column(
-        String, ForeignKey("topics.name", ondelete="CASCADE"),
+        String,
+        ForeignKey("topics.name", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -54,7 +65,9 @@ class Partition(Base, IntIdMixin, TimestampMixin):
     log_start_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     topic: Mapped["Topic"] = relationship(back_populates="partitions")
-    wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(back_populates="partition")
+    wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(
+        back_populates="partition"
+    )
 
     __table_args__ = (
         UniqueConstraint("topic_name", "partition_number"),
@@ -75,7 +88,9 @@ class WALFile(Base, BigIntIdMixin, TimestampMixin):
     compacted_by: Mapped[Optional[str]] = mapped_column(Text)
     iceberg_commit_id: Mapped[Optional[str]] = mapped_column(Text)
 
-    wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(back_populates="wal_file")
+    wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(
+        back_populates="wal_file"
+    )
 
 
 class WALFileOffset(Base, BigIntIdMixin):

@@ -20,9 +20,9 @@ def encode_varint(n: int) -> bytes:
             break
     return bytes(out)
 
+
 def encode_kafka_wal_file(
-    batches: List[ProduceTopicPartitionData],
-    broker_id: str
+    batches: List[ProduceTopicPartitionData], broker_id: str
 ) -> bytes:
     buf = BytesIO()
 
@@ -65,6 +65,7 @@ def encode_kafka_wal_file(
 
     return buf.getvalue()
 
+
 def decode_varint(buf: BytesIO) -> int:
     shift = 0
     result = 0
@@ -78,6 +79,7 @@ def decode_varint(buf: BytesIO) -> int:
             break
         shift += 7
     return result
+
 
 def decode_kafka_wal_file(data: bytes) -> WALFile:
     buf = BytesIO(data)
