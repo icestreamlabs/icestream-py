@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from icestream.config import Config
 
-# Pull models and config from your app
 from icestream.models import Base
 
 config = context.config
