@@ -50,12 +50,12 @@ class WALManager:
             log.info("WALManager stopped")
 
     async def _launch_flush(self):
+        self.last_flush_time = time.monotonic()
         if not self.buffer:
             return
         batch_to_flush = self.buffer
         self.buffer = []
         self.buffer_size = 0
-        self.last_flush_time = time.monotonic()
         asyncio.create_task(self._flush(batch_to_flush))
 
     async def _flush(self, batch_to_flush: List[ProduceTopicPartitionData]):
@@ -80,7 +80,7 @@ class WALManager:
                     total_records = sum(o["last_offset"] - o["base_offset"] + 1 for o in offsets)
 
                     wal_file = WALFile(
-                        uri=object_key,
+                        uri=f"{self.config.WAL_BUCKET}{"/" + self.config.WAL_BUCKET_PREFIX if self.config.WAL_BUCKET_PREFIX else ""}/{object_key}",
                         etag=getattr(put_result, "etag", None),
                         total_bytes=len(encoded),
                         total_messages=total_records,
@@ -114,7 +114,13 @@ class WALManager:
                 if not item.flush_result.done():
                     item.flush_result.set_exception(e)
 
-    def _generate_object_key(self) -> str:
+    @staticmethod
+    def _generate_object_key() -> str:
+        now = time.gmtime()
         ts = int(time.time() * 1000)
         uid = uuid.uuid4().hex
-        return f"wal/{ts}-{uid}.wal"
+        bucket = uid[:2]
+        return (
+            f"wal/{now.tm_year:04}/{now.tm_mon:02}/{now.tm_mday:02}/"
+            f"{now.tm_hour:02}/{now.tm_min:02}/{bucket}/{ts}-{uid}.wal"
+        )

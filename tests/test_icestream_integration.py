@@ -16,6 +16,8 @@ async def test_produce_single_message(http_client):
     producer = AIOKafkaProducer(bootstrap_servers=BOOTSTRAP_SERVERS)
     await producer.start()
     try:
-        await producer.send(TEST_TOPIC, b"hello kafka from test", key=b"test_key")
+        send_coro = await producer.send(TEST_TOPIC, b"hello kafka from test", key=b"test_key")
+        record_metadata = await send_coro
+        assert record_metadata is not None
     finally:
         await producer.stop()

@@ -119,6 +119,7 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[ProduceResponse], Any],
     ):
+        log.info(f"handling produce request {req}")
         topic_responses: List[produce_v8.response.TopicProduceResponse] = []
 
         for topic in req.topic_data:
@@ -131,7 +132,6 @@ class Connection(KafkaHandler):
                 records = partition.records
                 if records is not None:
                     record_count = int(struct.unpack(">I", records[57:61])[0])
-                records_data = records[61:]
                 magic = records[16]
                 error_code: ErrorCode | None = None
                 if magic != 2:
