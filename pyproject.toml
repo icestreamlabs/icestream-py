@@ -1,6 +1,5 @@
 [project]
 name = "icestream"
-version = "0.1.2"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,7 +20,8 @@ dependencies = [
 [build-system]
 requires = [
     "setuptools>=61.0",
-    "twine>=6.1.0"
+    "twine>=6.1.0",
+    "setuptools-scm"
 ]
 build-backend = "setuptools.build_meta"
 
