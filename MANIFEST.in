@@ -1,0 +1,6 @@
+global-exclude test_*.py
+global-exclude */test_*.py
+
+prune tests
+prune */tests
+
