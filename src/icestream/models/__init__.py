@@ -93,9 +93,7 @@ class WALFile(Base, BigIntIdMixin, TimestampMixin):
     total_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     total_messages: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    compacted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     compacted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
-    compacted_by: Mapped[Optional[str]] = mapped_column(Text)
 
     wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(
         back_populates="wal_file"

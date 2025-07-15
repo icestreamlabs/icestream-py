@@ -7,6 +7,7 @@ from hypercorn.asyncio import serve as hypercorn_serve
 from hypercorn.config import Config as HypercornConfig
 
 from icestream.admin import AdminApi
+from icestream.compaction import CompactorWorker
 from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
@@ -20,6 +21,7 @@ async def run():
     server_handle = None
     api_handle = None
     wal_manager_handle = None
+    compaction_worker_handle = None
 
     def _signal_handler(*_):
         log.warning("shutdown signal received")
@@ -54,11 +56,17 @@ async def run():
         api_handle = asyncio.create_task(
             hypercorn_serve(admin_api.app, hypercorn_config)
         )
+
+        if config.ENABLE_COMPACTION:
+            compaction_worker = CompactorWorker(config, [])
+            compaction_worker_handle = asyncio.create_task(compaction_worker.run())
+
         done, pending = await asyncio.wait(
             [
                 server_handle,
                 api_handle,
                 wal_manager_handle,
+                compaction_worker_handle,
                 asyncio.create_task(shutdown_event.wait()),
             ],
             return_when=asyncio.FIRST_COMPLETED,
@@ -74,7 +82,10 @@ async def run():
         log.exception(f"error during server setup or runtime {e}")
     finally:
         log.info("shutting down")
-        for task in [server_handle, api_handle, wal_manager_handle]:
+        handles = [server_handle, api_handle, wal_manager_handle]
+        if config.ENABLE_COMPACTION:
+            handles.append(compaction_worker_handle)
+        for task in handles:
             if task and not task.done():
                 task.cancel()
                 try:

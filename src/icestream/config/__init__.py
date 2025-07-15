@@ -46,6 +46,21 @@ class Config:
         self.FLUSH_INTERVAL = int(os.getenv("ICESTREAM_FLUSH_INTERVAL", 2))
         self.FLUSH_SIZE = int(os.getenv("ICESTREAM_FLUSH_SIZE", 100 * 1024 * 1024))
 
+        # compaction (technically just processing and writing to iceberg)
+        self.ENABLE_COMPACTION = os.getenv("ICESTREAM_ENABLE_COMPACTION", "true").lower() == "true"
+        self.COMPACTION_INTERVAL = int(os.getenv("ICESTREAM_COMPACTION_INTERVAL", 60)) # seconds
+        self.MAX_COMPACTION_SELECT_LIMIT = int(os.getenv("ICESTREAM_MAX_COMPACTION_SELECT_LIMIT", 10))
+        self.MAX_COMPACTION_WAL_FILES = int(os.getenv("ICESTREAM_MAX_COMPACTION_WAL_FILES", 60))
+        self.MAX_COMPACTION_BYTES = int(os.getenv("ICESTREAM_MAX_COMPACTION_BYTES", 100 * 1024 * 1024))
+
+        # pyiceberg
+        #
+        self.USE_PYICEBERG_CONFIG = os.getenv("ICESTREAM_USE_PYICEBERG_CONFIG", "false").lower() == "true"
+        self.ICEBERG_NAMESPACE = os.getenv("ICESTREAM_ICEBERG_NAMESPACE", "icestream")
+        self.ICEBERG_CREATE_NAMESPACE = os.getenv("ICESTREAM_ICEBERG_CREATE_NAMESPACE", "true").lower() == "true"
+        # for now only support rest catalog
+        # if s3 tables or glue (rest) then AWS_* environment variables need to be set
+
         self.create_engine()
         self.create_store()
 
@@ -76,7 +91,7 @@ class Config:
         )
 
     def create_store(self):
-        bucket_path = self.WAL_BUCKET + self.WAL_BUCKET_PREFIX
+        bucket_path = self.WAL_BUCKET + self.WAL_BUCKET_PREFIX # TODO
         region = self._get_region()
         endpoint = self._get_endpoint()
         if self.OBJECT_STORE_PROVIDER == "aws":

@@ -13,6 +13,7 @@ dependencies = [
     "kio>=0.4.0",
     "obstore>=0.7.0",
     "pydantic>=2.11.0",
+    "pyiceberg[s3fs,rest-sigv4]>=0.9.0",
     "sqlalchemy>=2.0.0",
     "structlog>=25.2.0",
 ]
