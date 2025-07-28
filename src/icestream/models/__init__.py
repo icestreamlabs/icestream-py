@@ -49,6 +49,7 @@ class Topic(Base, IntIdMixin, TimestampMixin):
     __tablename__ = "topics"
 
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    schema: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     partitions: Mapped[list["Partition"]] = relationship(back_populates="topic")
 

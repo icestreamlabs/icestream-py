@@ -11,9 +11,12 @@ from obstore.store import (
     MemoryStore,
     S3Store,
 )
+from pyiceberg.catalog import load_catalog
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
+
+from icestream.errors import IcebergConfigurationError
 
 ObjectStore: TypeAlias = (
     AzureStore | GCSStore | HTTPStore | S3Store | LocalStore | MemoryStore
@@ -60,9 +63,19 @@ class Config:
         self.ICEBERG_CREATE_NAMESPACE = os.getenv("ICESTREAM_ICEBERG_CREATE_NAMESPACE", "true").lower() == "true"
         # for now only support rest catalog
         # if s3 tables or glue (rest) then AWS_* environment variables need to be set
+        # because pyiceberg doesn't support compaction, only managed tables should be used
+        # or be able to compact or run maintenance operations
+        self.ICEBERG_WAREHOUSE = os.getenv("ICESTREAM_ICEBERG_WAREHOUSE")
+        self.ICEBERG_REST_URI = os.getenv("ICESTREAM_ICEBERG_REST_URI")
+        self.ICEBERG_REST_TOKEN = os.getenv("ICESTREAM_ICEBERG_REST_TOKEN")
+        self.ICEBERG_REST_SIGV4_ENABLED = os.getenv("ICESTREAM_ICEBERG_REST_SIGV4_ENABLED", "false").lower() == "true"
+        self.ICEBERG_REST_SIGNING_NAME = os.getenv("ICESTREAM_ICEBERG_REST_SIGNING_NAME")
+        self.ICEBERG_REST_SIGNING_REGION = os.getenv("ICESTREAM_REST_SIGNING_REGION")
+        self.iceberg_catalog = None
 
         self.create_engine()
         self.create_store()
+        self.create_iceberg_catalog()
 
     def create_engine(self):
         url = make_url(self.DATABASE_URL)
@@ -104,6 +117,32 @@ class Config:
                 credential_provider = Boto3CredentialProvider(session)
                 store_kwargs["credential_provider"] = credential_provider
             self.store = S3Store(bucket_path, **store_kwargs)
+
+    def create_iceberg_catalog(self):
+        if not self.ENABLE_COMPACTION:
+            return
+        catalog_opts = {"type": "rest"}
+        if self.ICEBERG_WAREHOUSE is None:
+            raise IcebergConfigurationError("warehouse needs to be set")
+        catalog_opts["warehouse"] = self.ICEBERG_WAREHOUSE
+        if self.ICEBERG_REST_URI is None:
+            raise IcebergConfigurationError("rest uri needs to be set")
+        catalog_opts["uri"] = self.ICEBERG_REST_URI
+        if self.ICEBERG_REST_SIGV4_ENABLED:
+            if not all(x is not None for x in (self.ICEBERG_REST_SIGNING_NAME, self.ICEBERG_REST_SIGNING_REGION)):
+                raise IcebergConfigurationError("if sigv4 is enabled then signing name and signing region need to be set")
+            catalog_opts["rest.sigv4-enabled"] = "true"
+            catalog_opts["rest.signing-name"] = self.ICEBERG_REST_SIGNING_NAME
+            catalog_opts["rest.signing-region"] = self.ICEBERG_REST_SIGNING_REGION
+        elif self.ICEBERG_REST_TOKEN:
+            catalog_opts["token"] = self.ICEBERG_REST_TOKEN
+
+        self.iceberg_catalog = load_catalog(
+            "default",
+            **catalog_opts
+        )
+        if self.ICEBERG_CREATE_NAMESPACE:
+            self.iceberg_catalog.create_namespace(self.ICEBERG_NAMESPACE)
 
     def _get_region(self):
         return os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION") or self.REGION

@@ -1,15 +1,17 @@
 import asyncio
 import datetime
 import time
+from collections import defaultdict
 from typing import Protocol, List, Callable, Sequence
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from icestream.config import Config
-from icestream.kafkaserver.wal import WALFile
+from icestream.kafkaserver.wal import WALFile, WALBatch
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
-from icestream.models import WALFile as WALFileModel
+from icestream.models import WALFile as WALFileModel, Topic
 from icestream.logger import log
 
 
@@ -80,6 +82,20 @@ class CompactorWorker:
 
 
 
+# currently only support Avro for schema
+# in theory can support plain json with some caveats
+# also non schema data, ie pure key/value straight from kafka records as key and value columns
 class IcebergCompactor(CompactionProcessor):
-    async def apply(self, config, wal_files):
-        pass
+    async def apply(self, config: Config, wal_files: list[WALFile]):
+        batches_by_topic: dict[str, list[WALBatch]] = defaultdict(list)
+        for wal_file in wal_files:
+            for batch in wal_file.batches:
+                batches_by_topic[batch.topic].append(batch)
+        async with httpx.AsyncClient() as http_client:
+            async with config.async_session_factory() as session:
+                topics = await session.execute(select(Topic))
+                for topic in topics.scalars():
+                    if not topic.schema:
+                        log.info(f"no schema for topic {topic.name}")
+                        continue
+
