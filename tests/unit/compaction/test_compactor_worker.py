@@ -1,9 +1,6 @@
-import asyncio
 import datetime
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-
-from more_itertools.more import side_effect
 
 from icestream.compaction import CompactorWorker
 from icestream.compaction.types import CompactionProcessor, CompactionContext
