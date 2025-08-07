@@ -15,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
     and_,
+    select
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -28,7 +29,8 @@ class IntIdMixin:
 
 
 class BigIntIdMixin:
-    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(always=True), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(always=True),
+                                    primary_key=True)
 
 
 class TimestampMixin:
@@ -136,3 +138,93 @@ class WALFileOffset(Base, BigIntIdMixin):
         ),
         Index("ix_wal_file_offset_topic_partition", "topic_name", "partition_number"),
     )
+
+
+class ParquetFile(Base, BigIntIdMixin, TimestampMixin):
+    __tablename__ = "parquet_files"
+
+    topic_name: Mapped[str] = mapped_column(
+        String, ForeignKey("topics.name", ondelete="CASCADE"), nullable=False
+    )
+    partition_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    uri: Mapped[str] = mapped_column(Text, nullable=False)
+
+    total_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    row_count: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    min_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    max_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    min_timestamp: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    max_timestamp: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+    generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    compacted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+    partition: Mapped["Partition"] = relationship(
+        primaryjoin=and_(
+            topic_name == Partition.topic_name,
+            partition_number == Partition.partition_number,
+        ),
+        foreign_keys=[topic_name, partition_number],
+        viewonly=True,
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["topic_name", "partition_number"],
+            ["partitions.topic_name", "partitions.partition_number"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("uri"),
+        Index("ix_pf_topic_partition", "topic_name", "partition_number"),
+        Index("ix_pf_topic_partition_min", "topic_name", "partition_number", "min_offset"),
+        Index("ix_pf_topic_partition_max", "topic_name", "partition_number", "max_offset"),
+    )
+
+
+class ParquetFileSource(Base, BigIntIdMixin, TimestampMixin):
+    __tablename__ = "parquet_file_sources"
+    parquet_file_id: Mapped[int] = mapped_column(
+        ForeignKey("parquet_files.id", ondelete="CASCADE"), nullable=False
+    )
+    wal_file_id: Mapped[int] = mapped_column(
+        ForeignKey("wal_files.id", ondelete="CASCADE"), nullable=False
+    )
+    __table_args__ = (
+        UniqueConstraint("parquet_file_id", "wal_file_id"),
+        Index("ix_pfs_pf", "parquet_file_id"),
+        Index("ix_pfs_wf", "wal_file_id"),
+    )
+
+
+class ParquetFileParent(Base, BigIntIdMixin, TimestampMixin):
+    __tablename__ = "parquet_file_parents"
+    child_parquet_file_id: Mapped[int] = mapped_column(
+        ForeignKey("parquet_files.id", ondelete="CASCADE"), nullable=False
+    )
+    parent_parquet_file_id: Mapped[int] = mapped_column(
+        ForeignKey("parquet_files.id", ondelete="CASCADE"), nullable=False
+    )
+    __table_args__ = (
+        UniqueConstraint("child_parquet_file_id", "parent_parquet_file_id"),
+        Index("ix_pfp_child", "child_parquet_file_id"),
+        Index("ix_pfp_parent", "parent_parquet_file_id"),
+    )
+
+
+async def assert_no_overlap(session, topic: str, partition: int, min_off: int, max_off: int) -> None:
+    q = (
+        select(ParquetFile.id)
+        .where(
+            ParquetFile.topic_name == topic,
+            ParquetFile.partition_number == partition,
+            ParquetFile.compacted_at.is_(None),
+            ParquetFile.min_offset <= max_off,
+            ParquetFile.max_offset >= min_off,
+        )
+        .limit(1)
+    )
+    if (await session.execute(q)).scalar() is not None:
+        raise ValueError(f"Overlapping Parquet range for {topic}[{partition}] {min_off}-{max_off}")

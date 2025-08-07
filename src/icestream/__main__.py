@@ -8,6 +8,7 @@ from hypercorn.config import Config as HypercornConfig
 
 from icestream.admin import AdminApi
 from icestream.compaction import CompactorWorker
+from icestream.compaction.wal_to_parquet import WalToParquetProcessor
 from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
@@ -58,7 +59,7 @@ async def run():
         )
 
         if config.ENABLE_COMPACTION:
-            compaction_worker = CompactorWorker(config, [])
+            compaction_worker = CompactorWorker(config, [WalToParquetProcessor])
             compaction_worker_handle = asyncio.create_task(compaction_worker.run())
 
         done, pending = await asyncio.wait(

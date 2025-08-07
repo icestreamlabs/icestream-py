@@ -96,7 +96,7 @@ class WALManager:
                     total_records = sum(o["last_offset"] - o["base_offset"] + 1 for o in offsets)
 
                     wal_file = WALFile(
-                        uri=f"{self.config.WAL_BUCKET}{"/" + self.config.WAL_BUCKET_PREFIX if self.config.WAL_BUCKET_PREFIX else ""}/{object_key}",
+                        uri=f"{self.config.WAL_BUCKET}{"/" + self.config.WAL_BUCKET_PREFIX if self.config.WAL_BUCKET_PREFIX is not None else ""}/{object_key}",
                         etag=getattr(put_result, "etag", None),
                         total_bytes=len(encoded),
                         total_messages=total_records,

@@ -3,26 +3,14 @@ import time
 from io import BytesIO
 from typing import List
 
-from icestream.kafkaserver.protocol import KafkaRecordBatch
+from icestream.kafkaserver.protocol import KafkaRecordBatch, KafkaRecordHeader, KafkaRecord
 from icestream.kafkaserver.types import ProduceTopicPartitionData
+from icestream.kafkaserver.utils import encode_varint, decode_varint
 from icestream.kafkaserver.wal import WALBatch, WALFile
 
 
-def encode_varint(n: int) -> bytes:
-    out = bytearray()
-    while True:
-        to_write = n & 0x7F
-        n >>= 7
-        if n:
-            out.append(to_write | 0x80)
-        else:
-            out.append(to_write)
-            break
-    return bytes(out)
-
-
 def encode_kafka_wal_file_with_offsets(
-    batches: List[ProduceTopicPartitionData], broker_id: str
+        batches: List[ProduceTopicPartitionData], broker_id: str
 ) -> tuple[bytes, list[dict]]:
     buf = BytesIO()
     offset_metadata = []
@@ -30,7 +18,8 @@ def encode_kafka_wal_file_with_offsets(
     # Write WAL file header
     buf.write(b"WAL1")  # Magic prefix
     buf.write(struct.pack(">B", 1))  # '>B': big-endian unsigned char (1 byte) - version
-    buf.write(struct.pack(">Q", int(time.time() * 1000)))  # '>Q': big-endian unsigned long long (8 bytes) - flushed_at timestamp in ms
+    buf.write(struct.pack(">Q",
+                          int(time.time() * 1000)))  # '>Q': big-endian unsigned long long (8 bytes) - flushed_at timestamp in ms
 
     # Write broker ID as length-prefixed UTF-8 string
     broker_bytes = broker_id.encode("utf-8")
@@ -108,20 +97,6 @@ def encode_kafka_wal_file_with_offsets(
         })
 
     return buf.getvalue(), offset_metadata
-
-def decode_varint(buf: BytesIO) -> int:
-    shift = 0
-    result = 0
-    while True:
-        b = buf.read(1)
-        if not b:
-            raise EOFError("Unexpected EOF in varint")
-        byte = b[0]
-        result |= (byte & 0x7F) << shift
-        if not (byte & 0x80):
-            break
-        shift += 7
-    return result
 
 
 def decode_kafka_wal_file(data: bytes) -> WALFile:

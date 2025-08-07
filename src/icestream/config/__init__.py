@@ -37,7 +37,7 @@ class Config:
             "ICESTREAM_OBJECT_STORE_PROVIDER", "memory"
         )
         self.WAL_BUCKET = os.getenv("ICESTREAM_WAL_BUCKET", "icestream-wal")
-        self.WAL_BUCKET_PREFIX = os.getenv("ICESTREAM_WAL_BUCKET_PREFIX", "")
+        self.WAL_BUCKET_PREFIX = os.getenv("ICESTREAM_WAL_BUCKET_PREFIX", None)
         self.S3_ENDPOINT_URL = os.getenv("ICESTREAM_S3_ENDPOINT_URL")
         self.REGION = os.getenv("ICESTREAM_REGION", "us-east-1")
         self.MAX_IN_FLIGHT_FLUSHES = int(
@@ -49,14 +49,30 @@ class Config:
         self.FLUSH_INTERVAL = int(os.getenv("ICESTREAM_FLUSH_INTERVAL", 2))
         self.FLUSH_SIZE = int(os.getenv("ICESTREAM_FLUSH_SIZE", 100 * 1024 * 1024))
 
-        # compaction (technically just processing and writing to iceberg)
+        # compaction (technically just processing and writing to parquet)
         self.ENABLE_COMPACTION = os.getenv("ICESTREAM_ENABLE_COMPACTION", "true").lower() == "true"
         self.COMPACTION_INTERVAL = int(os.getenv("ICESTREAM_COMPACTION_INTERVAL", 60)) # seconds
         self.MAX_COMPACTION_SELECT_LIMIT = int(os.getenv("ICESTREAM_MAX_COMPACTION_SELECT_LIMIT", 10))
         self.MAX_COMPACTION_WAL_FILES = int(os.getenv("ICESTREAM_MAX_COMPACTION_WAL_FILES", 60))
         self.MAX_COMPACTION_BYTES = int(os.getenv("ICESTREAM_MAX_COMPACTION_BYTES", 100 * 1024 * 1024))
 
-        # pyiceberg
+        # parquet / compaction tuning
+        self.PARQUET_TARGET_FILE_BYTES = int(os.getenv("ICESTREAM_PARQUET_TARGET_FILE_BYTES", 256 * 1024 * 1024))
+        self.PARQUET_ROW_GROUP_TARGET_BYTES = int(
+            os.getenv("ICESTREAM_PARQUET_ROW_GROUP_TARGET_BYTES", 64 * 1024 * 1024))
+        self.PARQUET_FORCE_FLUSH_MAX_LATENCY_SEC = int(os.getenv("ICESTREAM_PARQUET_FORCE_FLUSH_MAX_LATENCY_SEC", 300))
+
+        # parquet→parquet compaction policy
+        self.PARQUET_COMPACTION_TARGET_BYTES = int(
+            os.getenv("ICESTREAM_PARQUET_COMPACTION_TARGET_BYTES", 512 * 1024 * 1024))
+        self.PARQUET_COMPACTION_MIN_INPUT_FILES = int(os.getenv("ICESTREAM_PARQUET_COMPACTION_MIN_INPUT_FILES", 4))
+        self.PARQUET_COMPACTION_MAX_INPUT_FILES = int(os.getenv("ICESTREAM_PARQUET_COMPACTION_MAX_INPUT_FILES", 200))
+        self.PARQUET_COMPACTION_FORCE_AGE_SEC = int(os.getenv("ICESTREAM_PARQUET_COMPACTION_FORCE_AGE_SEC", 3600))
+
+        # where to write parquet files (a prefix/keyspace in your object store)
+        self.PARQUET_PREFIX = os.getenv("ICESTREAM_PARQUET_PREFIX", "parquet")
+
+        # pyiceberg - not supported until manifest compaction/rewriting/file deleting is supported
         #
         self.USE_PYICEBERG_CONFIG = os.getenv("ICESTREAM_USE_PYICEBERG_CONFIG", "false").lower() == "true"
         self.ICEBERG_NAMESPACE = os.getenv("ICESTREAM_ICEBERG_NAMESPACE", "icestream")
@@ -75,7 +91,6 @@ class Config:
 
         self.create_engine()
         self.create_store()
-        self.create_iceberg_catalog()
 
     def create_engine(self):
         url = make_url(self.DATABASE_URL)
@@ -104,7 +119,7 @@ class Config:
         )
 
     def create_store(self):
-        bucket_path = self.WAL_BUCKET + self.WAL_BUCKET_PREFIX # TODO
+        bucket_path = self.WAL_BUCKET
         region = self._get_region()
         endpoint = self._get_endpoint()
         if self.OBJECT_STORE_PROVIDER == "aws":
@@ -116,7 +131,7 @@ class Config:
                 session = Session()
                 credential_provider = Boto3CredentialProvider(session)
                 store_kwargs["credential_provider"] = credential_provider
-            self.store = S3Store(bucket_path, **store_kwargs)
+            self.store = S3Store(bucket_path, prefix=self.WAL_BUCKET_PREFIX, **store_kwargs)
 
     def create_iceberg_catalog(self):
         if not self.ENABLE_COMPACTION:
