@@ -62,7 +62,7 @@ class WALManager:
             await self._launch_flush()
 
     async def _launch_flush(self):
-        self.last_flush_time = time.monotonic()
+        self.last_flush_time = self.time_source()
         if not self.buffer:
             return
         batch_to_flush = self.buffer
