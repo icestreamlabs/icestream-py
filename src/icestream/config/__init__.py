@@ -48,6 +48,7 @@ class Config:
         # wal
         self.FLUSH_INTERVAL = int(os.getenv("ICESTREAM_FLUSH_INTERVAL", 2))
         self.FLUSH_SIZE = int(os.getenv("ICESTREAM_FLUSH_SIZE", 100 * 1024 * 1024))
+        self.FLUSH_MAX_BATCHES = int(os.getenv("ICESTREAM_FLUSH_MAX_BATCHES", None))
 
         # compaction (technically just processing and writing to parquet)
         self.ENABLE_COMPACTION = os.getenv("ICESTREAM_ENABLE_COMPACTION", "true").lower() == "true"
