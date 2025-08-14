@@ -51,33 +51,59 @@ class Config:
         self.FLUSH_MAX_BATCHES = int(os.getenv("ICESTREAM_FLUSH_MAX_BATCHES", None))
 
         # compaction (technically just processing and writing to parquet)
-        self.ENABLE_COMPACTION = os.getenv("ICESTREAM_ENABLE_COMPACTION", "true").lower() == "true"
-        self.COMPACTION_INTERVAL = int(os.getenv("ICESTREAM_COMPACTION_INTERVAL", 60)) # seconds
-        self.MAX_COMPACTION_SELECT_LIMIT = int(os.getenv("ICESTREAM_MAX_COMPACTION_SELECT_LIMIT", 10))
-        self.MAX_COMPACTION_WAL_FILES = int(os.getenv("ICESTREAM_MAX_COMPACTION_WAL_FILES", 60))
-        self.MAX_COMPACTION_BYTES = int(os.getenv("ICESTREAM_MAX_COMPACTION_BYTES", 100 * 1024 * 1024))
+        self.ENABLE_COMPACTION = (
+            os.getenv("ICESTREAM_ENABLE_COMPACTION", "true").lower() == "true"
+        )
+        self.COMPACTION_INTERVAL = int(
+            os.getenv("ICESTREAM_COMPACTION_INTERVAL", 60)
+        )  # seconds
+        self.MAX_COMPACTION_SELECT_LIMIT = int(
+            os.getenv("ICESTREAM_MAX_COMPACTION_SELECT_LIMIT", 10)
+        )
+        self.MAX_COMPACTION_WAL_FILES = int(
+            os.getenv("ICESTREAM_MAX_COMPACTION_WAL_FILES", 60)
+        )
+        self.MAX_COMPACTION_BYTES = int(
+            os.getenv("ICESTREAM_MAX_COMPACTION_BYTES", 100 * 1024 * 1024)
+        )
 
         # parquet / compaction tuning
-        self.PARQUET_TARGET_FILE_BYTES = int(os.getenv("ICESTREAM_PARQUET_TARGET_FILE_BYTES", 256 * 1024 * 1024))
+        self.PARQUET_TARGET_FILE_BYTES = int(
+            os.getenv("ICESTREAM_PARQUET_TARGET_FILE_BYTES", 256 * 1024 * 1024)
+        )
         self.PARQUET_ROW_GROUP_TARGET_BYTES = int(
-            os.getenv("ICESTREAM_PARQUET_ROW_GROUP_TARGET_BYTES", 64 * 1024 * 1024))
-        self.PARQUET_FORCE_FLUSH_MAX_LATENCY_SEC = int(os.getenv("ICESTREAM_PARQUET_FORCE_FLUSH_MAX_LATENCY_SEC", 300))
+            os.getenv("ICESTREAM_PARQUET_ROW_GROUP_TARGET_BYTES", 64 * 1024 * 1024)
+        )
+        self.PARQUET_FORCE_FLUSH_MAX_LATENCY_SEC = int(
+            os.getenv("ICESTREAM_PARQUET_FORCE_FLUSH_MAX_LATENCY_SEC", 300)
+        )
 
         # parquet→parquet compaction policy
         self.PARQUET_COMPACTION_TARGET_BYTES = int(
-            os.getenv("ICESTREAM_PARQUET_COMPACTION_TARGET_BYTES", 512 * 1024 * 1024))
-        self.PARQUET_COMPACTION_MIN_INPUT_FILES = int(os.getenv("ICESTREAM_PARQUET_COMPACTION_MIN_INPUT_FILES", 4))
-        self.PARQUET_COMPACTION_MAX_INPUT_FILES = int(os.getenv("ICESTREAM_PARQUET_COMPACTION_MAX_INPUT_FILES", 200))
-        self.PARQUET_COMPACTION_FORCE_AGE_SEC = int(os.getenv("ICESTREAM_PARQUET_COMPACTION_FORCE_AGE_SEC", 3600))
+            os.getenv("ICESTREAM_PARQUET_COMPACTION_TARGET_BYTES", 512 * 1024 * 1024)
+        )
+        self.PARQUET_COMPACTION_MIN_INPUT_FILES = int(
+            os.getenv("ICESTREAM_PARQUET_COMPACTION_MIN_INPUT_FILES", 4)
+        )
+        self.PARQUET_COMPACTION_MAX_INPUT_FILES = int(
+            os.getenv("ICESTREAM_PARQUET_COMPACTION_MAX_INPUT_FILES", 200)
+        )
+        self.PARQUET_COMPACTION_FORCE_AGE_SEC = int(
+            os.getenv("ICESTREAM_PARQUET_COMPACTION_FORCE_AGE_SEC", 3600)
+        )
 
         # where to write parquet files (a prefix/keyspace in your object store)
         self.PARQUET_PREFIX = os.getenv("ICESTREAM_PARQUET_PREFIX", "parquet")
 
         # pyiceberg - not supported until manifest compaction/rewriting/file deleting is supported
         #
-        self.USE_PYICEBERG_CONFIG = os.getenv("ICESTREAM_USE_PYICEBERG_CONFIG", "false").lower() == "true"
+        self.USE_PYICEBERG_CONFIG = (
+            os.getenv("ICESTREAM_USE_PYICEBERG_CONFIG", "false").lower() == "true"
+        )
         self.ICEBERG_NAMESPACE = os.getenv("ICESTREAM_ICEBERG_NAMESPACE", "icestream")
-        self.ICEBERG_CREATE_NAMESPACE = os.getenv("ICESTREAM_ICEBERG_CREATE_NAMESPACE", "true").lower() == "true"
+        self.ICEBERG_CREATE_NAMESPACE = (
+            os.getenv("ICESTREAM_ICEBERG_CREATE_NAMESPACE", "true").lower() == "true"
+        )
         # for now only support rest catalog
         # if s3 tables or glue (rest) then AWS_* environment variables need to be set
         # because pyiceberg doesn't support compaction, only managed tables should be used
@@ -85,8 +111,12 @@ class Config:
         self.ICEBERG_WAREHOUSE = os.getenv("ICESTREAM_ICEBERG_WAREHOUSE")
         self.ICEBERG_REST_URI = os.getenv("ICESTREAM_ICEBERG_REST_URI")
         self.ICEBERG_REST_TOKEN = os.getenv("ICESTREAM_ICEBERG_REST_TOKEN")
-        self.ICEBERG_REST_SIGV4_ENABLED = os.getenv("ICESTREAM_ICEBERG_REST_SIGV4_ENABLED", "false").lower() == "true"
-        self.ICEBERG_REST_SIGNING_NAME = os.getenv("ICESTREAM_ICEBERG_REST_SIGNING_NAME")
+        self.ICEBERG_REST_SIGV4_ENABLED = (
+            os.getenv("ICESTREAM_ICEBERG_REST_SIGV4_ENABLED", "false").lower() == "true"
+        )
+        self.ICEBERG_REST_SIGNING_NAME = os.getenv(
+            "ICESTREAM_ICEBERG_REST_SIGNING_NAME"
+        )
         self.ICEBERG_REST_SIGNING_REGION = os.getenv("ICESTREAM_REST_SIGNING_REGION")
         self.iceberg_catalog = None
 
@@ -132,7 +162,9 @@ class Config:
                 session = Session()
                 credential_provider = Boto3CredentialProvider(session)
                 store_kwargs["credential_provider"] = credential_provider
-            self.store = S3Store(bucket_path, prefix=self.WAL_BUCKET_PREFIX, **store_kwargs)
+            self.store = S3Store(
+                bucket_path, prefix=self.WAL_BUCKET_PREFIX, **store_kwargs
+            )
 
     def create_iceberg_catalog(self):
         if not self.ENABLE_COMPACTION:
@@ -145,18 +177,23 @@ class Config:
             raise IcebergConfigurationError("rest uri needs to be set")
         catalog_opts["uri"] = self.ICEBERG_REST_URI
         if self.ICEBERG_REST_SIGV4_ENABLED:
-            if not all(x is not None for x in (self.ICEBERG_REST_SIGNING_NAME, self.ICEBERG_REST_SIGNING_REGION)):
-                raise IcebergConfigurationError("if sigv4 is enabled then signing name and signing region need to be set")
+            if not all(
+                x is not None
+                for x in (
+                    self.ICEBERG_REST_SIGNING_NAME,
+                    self.ICEBERG_REST_SIGNING_REGION,
+                )
+            ):
+                raise IcebergConfigurationError(
+                    "if sigv4 is enabled then signing name and signing region need to be set"
+                )
             catalog_opts["rest.sigv4-enabled"] = "true"
             catalog_opts["rest.signing-name"] = self.ICEBERG_REST_SIGNING_NAME
             catalog_opts["rest.signing-region"] = self.ICEBERG_REST_SIGNING_REGION
         elif self.ICEBERG_REST_TOKEN:
             catalog_opts["token"] = self.ICEBERG_REST_TOKEN
 
-        self.iceberg_catalog = load_catalog(
-            "default",
-            **catalog_opts
-        )
+        self.iceberg_catalog = load_catalog("default", **catalog_opts)
         if self.ICEBERG_CREATE_NAMESPACE:
             self.iceberg_catalog.create_namespace(self.ICEBERG_NAMESPACE)
 

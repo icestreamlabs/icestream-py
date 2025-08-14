@@ -6,9 +6,11 @@ import pytest
 from icestream.kafkaserver.server import Connection, Server
 from tests.utils.time import FakeClock
 
+
 @pytest.fixture
 def fake_clock():
     return FakeClock()
+
 
 @pytest.fixture
 def mock_async_session_factory():
@@ -23,6 +25,7 @@ def mock_async_session_factory():
 
     factory = MagicMock(return_value=cm)
     return factory, session
+
 
 @pytest.fixture
 def base_config(mock_async_session_factory):
@@ -40,9 +43,11 @@ def base_config(mock_async_session_factory):
     cfg.BROKER_ID = "b1"
     return cfg
 
+
 @pytest.fixture
 def stream_writer():
     return AsyncMock(spec=StreamWriter)
+
 
 @pytest.fixture
 def handler(base_config):

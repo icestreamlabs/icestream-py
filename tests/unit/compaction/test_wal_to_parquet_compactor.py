@@ -10,23 +10,34 @@ from icestream.compaction.types import CompactionContext
 from icestream.compaction.wal_to_parquet import WalToParquetProcessor
 from icestream.compaction import build_uri
 from icestream.kafkaserver.wal import WALFile as DecodedWALFile, WALBatch
-from icestream.kafkaserver.protocol import KafkaRecordBatch, KafkaRecord, KafkaRecordHeader
+from icestream.kafkaserver.protocol import (
+    KafkaRecordBatch,
+    KafkaRecord,
+    KafkaRecordHeader,
+)
 from icestream.models import ParquetFile, WALFile as WALFileModel
 
 
 def capture_parquet_rows(session):
     out = {"ParquetFile": [], "ParquetFileSource": []}
+
     def _add(obj):
         t = type(obj).__name__
         if t in out:
             out[t].append(obj)
+
     session.add.side_effect = _add
     return out
 
+
 def patch_decode_and_build(records):
-    return patch("icestream.compaction.wal_to_parquet.decode_kafka_records", return_value=records), \
-           patch("icestream.compaction.wal_to_parquet.build_uri",
-                 side_effect=lambda arg, key: build_uri(getattr(arg, "config", arg), key))
+    return patch(
+        "icestream.compaction.wal_to_parquet.decode_kafka_records", return_value=records
+    ), patch(
+        "icestream.compaction.wal_to_parquet.build_uri",
+        side_effect=lambda arg, key: build_uri(getattr(arg, "config", arg), key),
+    )
+
 
 def _make_decoded_wal():
     krb = KafkaRecordBatch(
@@ -54,6 +65,7 @@ def _make_decoded_wal():
 def wal_to_parquet_proc():
     return WalToParquetProcessor()
 
+
 @pytest.fixture
 def cfg_for_parquet(base_config):
     cfg = base_config
@@ -62,9 +74,11 @@ def cfg_for_parquet(base_config):
     cfg.PARQUET_ROW_GROUP_TARGET_BYTES = 128
     return cfg
 
+
 @pytest.fixture
 def decoded_wal():
     return _make_decoded_wal()
+
 
 @pytest.fixture
 def ctx(cfg_for_parquet, decoded_wal, mock_async_session_factory):
@@ -73,6 +87,7 @@ def ctx(cfg_for_parquet, decoded_wal, mock_async_session_factory):
     class _FakeScalarResult:
         def scalar(self):
             return None
+
     session.execute = AsyncMock(return_value=_FakeScalarResult())
 
     wm1 = WALFileModel(uri="s3://bucket/file1", total_bytes=1000, total_messages=1)
@@ -100,12 +115,18 @@ async def test_bucket_records_and_flush_single_chunk(ctx, mock_async_session_fac
     records = [
         KafkaRecord(0, 0, 0, b"k0", b"v0", []),
         KafkaRecord(0, 5, 1, b"k1", b"v1", [KafkaRecordHeader("h", b"x")]),
-        KafkaRecord(0,10, 2, None,  b"v2"*50, []),
+        KafkaRecord(0, 10, 2, None, b"v2" * 50, []),
     ]
     created = capture_parquet_rows(mock_async_session_factory[1])
 
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with (
+        p1,
+        p2,
+        patch.object(
+            ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+        ) as put_wrap,
+    ):
         await proc.apply(ctx)
 
     # one upload with expected key
@@ -129,9 +150,9 @@ async def test_chunking_multiple_files(ctx):
     ctx.config.PARQUET_TARGET_FILE_BYTES = 80
     proc = WalToParquetProcessor()
     records = [
-        KafkaRecord(0, 0, 0, b"k0", b"v0"*30, []),
-        KafkaRecord(0, 1, 1, b"k1", b"v1"*30, []),
-        KafkaRecord(0, 2, 2, None,  b"v2"*30, []),
+        KafkaRecord(0, 0, 0, b"k0", b"v0" * 30, []),
+        KafkaRecord(0, 1, 1, b"k1", b"v1" * 30, []),
+        KafkaRecord(0, 2, 2, None, b"v2" * 30, []),
     ]
 
     p1, p2 = patch_decode_and_build(records)
@@ -142,22 +163,32 @@ async def test_chunking_multiple_files(ctx):
 
 
 @pytest.mark.asyncio
-async def test_memorystore_roundtrip_single_chunk(ctx, wal_to_parquet_proc, mock_async_session_factory):
+async def test_memorystore_roundtrip_single_chunk(
+    ctx, wal_to_parquet_proc, mock_async_session_factory
+):
     ctx.config.store = MemoryStore()
     records = [
         KafkaRecord(0, 0, 0, b"k0", b"v0", []),
         KafkaRecord(0, 5, 1, b"k1", b"v1", [KafkaRecordHeader("h", b"x")]),
-        KafkaRecord(0,10, 2, None,  b"v2"*10, []),
+        KafkaRecord(0, 10, 2, None, b"v2" * 10, []),
     ]
     created = capture_parquet_rows(mock_async_session_factory[1])
 
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with (
+        p1,
+        p2,
+        patch.object(
+            ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+        ) as put_wrap,
+    ):
         await wal_to_parquet_proc.apply(ctx)
 
     assert put_wrap.await_count == 1
     key = put_wrap.await_args_list[0].args[0]
-    assert key.startswith("parquet/topics/t1/partition=0/") and key.endswith("-gen0.parquet")
+    assert key.startswith("parquet/topics/t1/partition=0/") and key.endswith(
+        "-gen0.parquet"
+    )
 
     pf = created["ParquetFile"][0]
     assert pf.topic_name == "t1" and pf.partition_number == 0
@@ -173,7 +204,7 @@ async def test_memorystore_roundtrip_single_chunk(ctx, wal_to_parquet_proc, mock
     vals = table.column("value").to_pylist()
     assert keys[0] == b"k0" and vals[0] == b"v0"
     assert keys[1] == b"k1" and vals[1] == b"v1"
-    assert keys[2] is None and len(vals[2]) == len(b"v2"*10)
+    assert keys[2] is None and len(vals[2]) == len(b"v2" * 10)
     headers = table.column("headers").to_pylist()
     assert headers[1] == [{"key": "h", "value": b"x"}]
 
@@ -183,14 +214,20 @@ async def test_memorystore_multiple_chunks(ctx, wal_to_parquet_proc):
     ctx.config.store = MemoryStore()
     ctx.config.PARQUET_TARGET_FILE_BYTES = 70
     records = [
-        KafkaRecord(0, 0, 0, b"k0", b"v0"*30, []),
-        KafkaRecord(0, 1, 1, b"k1", b"v1"*30, []),
-        KafkaRecord(0, 2, 2, None,  b"v2"*30, []),
-        KafkaRecord(0, 3, 3, b"k3", b"v3"*30, []),
+        KafkaRecord(0, 0, 0, b"k0", b"v0" * 30, []),
+        KafkaRecord(0, 1, 1, b"k1", b"v1" * 30, []),
+        KafkaRecord(0, 2, 2, None, b"v2" * 30, []),
+        KafkaRecord(0, 3, 3, b"k3", b"v3" * 30, []),
     ]
 
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with (
+        p1,
+        p2,
+        patch.object(
+            ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+        ) as put_wrap,
+    ):
         await wal_to_parquet_proc.apply(ctx)
 
     assert put_wrap.await_count >= 2
@@ -203,7 +240,9 @@ async def test_memorystore_multiple_chunks(ctx, wal_to_parquet_proc):
 
 
 @pytest.mark.asyncio
-async def test_overlap_raises_and_skips_db_insert(ctx, wal_to_parquet_proc, mock_async_session_factory):
+async def test_overlap_raises_and_skips_db_insert(
+    ctx, wal_to_parquet_proc, mock_async_session_factory
+):
     ctx.config.store = MemoryStore()
     records = [
         KafkaRecord(0, 0, 0, b"k0", b"v0", []),
@@ -211,14 +250,21 @@ async def test_overlap_raises_and_skips_db_insert(ctx, wal_to_parquet_proc, mock
     ]
 
     class _Hit:
-        def scalar(self): return 1
+        def scalar(self):
+            return 1
 
     _, session = mock_async_session_factory
     session.execute = AsyncMock(return_value=_Hit())
     created = capture_parquet_rows(session)
 
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with (
+        p1,
+        p2,
+        patch.object(
+            ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+        ) as put_wrap,
+    ):
         with pytest.raises(ValueError):
             await wal_to_parquet_proc.apply(ctx)
 
@@ -227,7 +273,9 @@ async def test_overlap_raises_and_skips_db_insert(ctx, wal_to_parquet_proc, mock
 
 
 @pytest.mark.asyncio
-async def test_min_max_timestamp_fields_on_parquetfile(ctx, wal_to_parquet_proc, mock_async_session_factory):
+async def test_min_max_timestamp_fields_on_parquetfile(
+    ctx, wal_to_parquet_proc, mock_async_session_factory
+):
     ctx.config.store = MemoryStore()
     base_ts_ms = 1_700_000_000_000
     krb = ctx.wal_decoded[0].batches[0].kafka_record_batch
@@ -236,9 +284,9 @@ async def test_min_max_timestamp_fields_on_parquetfile(ctx, wal_to_parquet_proc,
     created = capture_parquet_rows(mock_async_session_factory[1])
 
     records = [
-        KafkaRecord(0, 0, 0, b"a", b"a", []),   # ts = base + 0
-        KafkaRecord(0, 5, 1, b"b", b"b", []),   # ts = base + 5
-        KafkaRecord(0,10, 2, b"c", b"c", []),   # ts = base + 10
+        KafkaRecord(0, 0, 0, b"a", b"a", []),  # ts = base + 0
+        KafkaRecord(0, 5, 1, b"b", b"b", []),  # ts = base + 5
+        KafkaRecord(0, 10, 2, b"c", b"c", []),  # ts = base + 10
     ]
 
     p1, p2 = patch_decode_and_build(records)
@@ -259,7 +307,9 @@ async def test_no_wal_decoded_noop(ctx, mock_async_session_factory):
     proc = WalToParquetProcessor()
     ctx.wal_decoded = []
 
-    with patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with patch.object(
+        ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+    ) as put_wrap:
         _, session = mock_async_session_factory
         added = []
         session.add.side_effect = lambda obj: added.append(type(obj).__name__)
@@ -275,9 +325,20 @@ async def test_batch_without_base_offset_is_skipped(ctx):
 
     # create a wal whose batch lacks the .base_offset attr
     krb = KafkaRecordBatch(
-        base_offset=999, batch_length=100, partition_leader_epoch=0, magic=2, crc=0,
-        attributes=0, last_offset_delta=0, base_timestamp=0, max_timestamp=0,
-        producer_id=-1, producer_epoch=-1, base_sequence=-1, records_count=1, records=b"...",
+        base_offset=999,
+        batch_length=100,
+        partition_leader_epoch=0,
+        magic=2,
+        crc=0,
+        attributes=0,
+        last_offset_delta=0,
+        base_timestamp=0,
+        max_timestamp=0,
+        producer_id=-1,
+        producer_epoch=-1,
+        base_sequence=-1,
+        records_count=1,
+        records=b"...",
     )
     bad_batch = WALBatch(topic="tX", partition=7, kafka_record_batch=krb)
 
@@ -287,7 +348,13 @@ async def test_batch_without_base_offset_is_skipped(ctx):
 
     records = [KafkaRecord(0, 0, 0, b"k", b"v", [])]
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with (
+        p1,
+        p2,
+        patch.object(
+            ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+        ) as put_wrap,
+    ):
         await proc.apply(ctx)
 
     # still at least one upload from the original fixture wal
@@ -295,7 +362,9 @@ async def test_batch_without_base_offset_is_skipped(ctx):
 
 
 @pytest.mark.asyncio
-async def test_multiple_topics_and_partitions_grouping(ctx, wal_to_parquet_proc, mock_async_session_factory):
+async def test_multiple_topics_and_partitions_grouping(
+    ctx, wal_to_parquet_proc, mock_async_session_factory
+):
     b0 = ctx.wal_decoded[0].batches[0]
     b1 = WALBatch(topic="t2", partition=1, kafka_record_batch=b0.kafka_record_batch)
     setattr(b1, "base_offset", b0.kafka_record_batch.base_offset)
@@ -305,18 +374,27 @@ async def test_multiple_topics_and_partitions_grouping(ctx, wal_to_parquet_proc,
     records = [
         KafkaRecord(0, 0, 0, b"A", b"A", []),
         KafkaRecord(0, 5, 1, b"B", b"B", []),
-        KafkaRecord(0,10, 2, b"C", b"C", []),
+        KafkaRecord(0, 10, 2, b"C", b"C", []),
     ]
 
     created = capture_parquet_rows(mock_async_session_factory[1])
 
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with (
+        p1,
+        p2,
+        patch.object(
+            ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+        ) as put_wrap,
+    ):
         await wal_to_parquet_proc.apply(ctx)
 
     assert put_wrap.await_count >= 2
     pf_rows = created["ParquetFile"]
-    keys = {(pf.topic_name, pf.partition_number, pf.min_offset, pf.max_offset) for pf in pf_rows}
+    keys = {
+        (pf.topic_name, pf.partition_number, pf.min_offset, pf.max_offset)
+        for pf in pf_rows
+    }
     assert ("t1", 0, 100, 102) in keys
     assert ("t2", 1, 100, 102) in keys
 
@@ -332,14 +410,22 @@ async def test_exact_target_boundary_splits(ctx, wal_to_parquet_proc):
     ]
 
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch.object(ctx.config.store, "put_async", wraps=ctx.config.store.put_async) as put_wrap:
+    with (
+        p1,
+        p2,
+        patch.object(
+            ctx.config.store, "put_async", wraps=ctx.config.store.put_async
+        ) as put_wrap,
+    ):
         await wal_to_parquet_proc.apply(ctx)
 
     assert put_wrap.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_store_put_failure_raises_and_no_db_insert(ctx, wal_to_parquet_proc, mock_async_session_factory):
+async def test_store_put_failure_raises_and_no_db_insert(
+    ctx, wal_to_parquet_proc, mock_async_session_factory
+):
     ctx.config.PARQUET_TARGET_FILE_BYTES = 10_000
     ctx.config.store.put_async = AsyncMock(side_effect=RuntimeError("boom"))
     records = [KafkaRecord(0, 0, 0, b"k", b"v", [])]
@@ -360,13 +446,20 @@ async def test_store_put_failure_raises_and_no_db_insert(ctx, wal_to_parquet_pro
 async def test_assert_no_overlap_invoked_with_expected_range(ctx, wal_to_parquet_proc):
     # use out-of-order deltas to verify min/max are sorted
     records = [
-        KafkaRecord(0,10, 2, b"k2", b"v2", []),  # 102
+        KafkaRecord(0, 10, 2, b"k2", b"v2", []),  # 102
         KafkaRecord(0, 0, 0, b"k0", b"v0", []),  # 100
         KafkaRecord(0, 5, 1, b"k1", b"v1", []),  # 101
     ]
 
     p1, p2 = patch_decode_and_build(records)
-    with p1, p2, patch("icestream.compaction.wal_to_parquet.assert_no_overlap", new_callable=AsyncMock) as overlap:
+    with (
+        p1,
+        p2,
+        patch(
+            "icestream.compaction.wal_to_parquet.assert_no_overlap",
+            new_callable=AsyncMock,
+        ) as overlap,
+    ):
         await wal_to_parquet_proc.apply(ctx)
 
     overlap.assert_awaited()

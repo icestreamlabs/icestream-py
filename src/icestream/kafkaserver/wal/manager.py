@@ -49,7 +49,9 @@ class WALManager:
             extra={
                 "flush_size": getattr(self.config, "FLUSH_SIZE", None),
                 "flush_interval": getattr(self.config, "FLUSH_INTERVAL", None),
-                "max_in_flight_flushes": getattr(self.config, "MAX_IN_FLIGHT_FLUSHES", None),
+                "max_in_flight_flushes": getattr(
+                    self.config, "MAX_IN_FLIGHT_FLUSHES", None
+                ),
                 "flush_max_batches": self._max_batches,
                 "flush_timeout_s": self._flush_timeout,
             },
@@ -94,8 +96,10 @@ class WALManager:
             self._buffer_item(item)
 
             should_flush = (
-                (self.config.FLUSH_SIZE is not None and self.buffer_size >= self.config.FLUSH_SIZE)
-                or (self._max_batches is not None and self.buffer_count >= self._max_batches)
+                self.config.FLUSH_SIZE is not None
+                and self.buffer_size >= self.config.FLUSH_SIZE
+            ) or (
+                self._max_batches is not None and self.buffer_count >= self._max_batches
             )
             if should_flush:
                 await self._launch_flush()
@@ -133,11 +137,16 @@ class WALManager:
         except asyncio.TimeoutError:
             log.error(
                 "WALManager flush timed out",
-                extra={"batches": len(batch_to_flush), "timeout_s": self._flush_timeout},
+                extra={
+                    "batches": len(batch_to_flush),
+                    "timeout_s": self._flush_timeout,
+                },
             )
             for item in batch_to_flush:
                 if not item.flush_result.done():
-                    item.flush_result.set_exception(asyncio.TimeoutError("flush timed out"))
+                    item.flush_result.set_exception(
+                        asyncio.TimeoutError("flush timed out")
+                    )
         except asyncio.CancelledError:
             for item in batch_to_flush:
                 if not item.flush_result.done():
@@ -197,7 +206,7 @@ class WALManager:
                     base_off = o["base_offset"]
                     last_off = o["last_offset"]
                     if last_off >= base_off:
-                        total_records += (last_off - base_off + 1)
+                        total_records += last_off - base_off + 1
 
                 t2 = self.time_source()
                 async with self.config.async_session_factory() as session:

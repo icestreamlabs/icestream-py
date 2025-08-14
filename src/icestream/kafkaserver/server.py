@@ -95,10 +95,18 @@ class Connection(KafkaHandler):
         try:
             while True:
                 # read more about the kafka protocol here https://kafka.apache.org/0101/protocol.html
-                msg_length_bytes = await reader.readexactly(4) # kafka messages are prefixed by their length
-                msg_length = read_int32(io.BytesIO(msg_length_bytes)) # read the 4 byte integer, uses >i under the hood
+                msg_length_bytes = await reader.readexactly(
+                    4
+                )  # kafka messages are prefixed by their length
+                msg_length = read_int32(
+                    io.BytesIO(msg_length_bytes)
+                )  # read the 4 byte integer, uses >i under the hood
                 message = await reader.readexactly(msg_length)
-                api_key = struct.unpack(">H", message[:2])[0] # the api key is the first field, which is a 2 byte unsigned integer big endian
+                api_key = struct.unpack(
+                    ">H", message[:2]
+                )[
+                    0
+                ]  # the api key is the first field, which is a 2 byte unsigned integer big endian
                 await handle_kafka_request(api_key, message, self, writer)
 
         except asyncio.IncompleteReadError as e:

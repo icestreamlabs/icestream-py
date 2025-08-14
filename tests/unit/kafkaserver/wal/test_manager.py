@@ -19,25 +19,37 @@ def make_item(batch_len: int, topic: str = "topic") -> ProduceTopicPartitionData
         flush_result=fut,
     )
 
+
 @contextmanager
 def stub_encoder(*, topic: str = "topic", payload: bytes = b"x"):
     # minimal offsets + payload stub
     def _enc(batch, broker_id):
-        return payload, [{
-            "topic": topic, "partition": 0,
-            "base_offset": 0, "last_offset": 0,
-            "byte_start": 0, "byte_end": len(payload),
-        }]
-    with patch("icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets", new=_enc):
+        return payload, [
+            {
+                "topic": topic,
+                "partition": 0,
+                "base_offset": 0,
+                "last_offset": 0,
+                "byte_start": 0,
+                "byte_end": len(payload),
+            }
+        ]
+
+    with patch(
+        "icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets", new=_enc
+    ):
         yield
 
-async def run_size_triggered_flush(config, fake_clock: FakeClock, *, topic="t", payload=b"x"):
+
+async def run_size_triggered_flush(
+    config, fake_clock: FakeClock, *, topic="t", payload=b"x"
+):
     queue = asyncio.Queue()
     manager = WALManager(config=config, queue=queue, time_source=fake_clock)
     with stub_encoder(topic=topic, payload=payload):
         item = make_item(len(payload), topic=topic)
         await queue.put(item)
-        await manager.run_once()           # buffer + launch flush
+        await manager.run_once()  # buffer + launch flush
         await asyncio.gather(*manager.pending_flushes)
     return item, manager
 
@@ -105,9 +117,12 @@ async def test_flush_times_out_sets_exception(base_config, fake_clock: FakeClock
     # make put_async never complete so wait_for times out immediately
     def never_finishes(*a, **k):
         return asyncio.Future()
+
     config.store.put_async = AsyncMock(side_effect=never_finishes)
 
-    item, _ = await run_size_triggered_flush(config, fake_clock, topic="t", payload=b"x")
+    item, _ = await run_size_triggered_flush(
+        config, fake_clock, topic="t", payload=b"x"
+    )
 
     assert item.flush_result.done()
     with pytest.raises(asyncio.TimeoutError):
@@ -115,7 +130,9 @@ async def test_flush_times_out_sets_exception(base_config, fake_clock: FakeClock
 
 
 @pytest.mark.asyncio
-async def test_flush_db_error_sets_exception(base_config, fake_clock: FakeClock, mock_async_session_factory):
+async def test_flush_db_error_sets_exception(
+    base_config, fake_clock: FakeClock, mock_async_session_factory
+):
     config = base_config
     factory, session = mock_async_session_factory
     session.commit = AsyncMock(side_effect=RuntimeError("DB boom"))
@@ -123,7 +140,9 @@ async def test_flush_db_error_sets_exception(base_config, fake_clock: FakeClock,
     config.FLUSH_SIZE = 1
     config.FLUSH_INTERVAL = 999
 
-    item, _ = await run_size_triggered_flush(config, fake_clock, topic="t", payload=b"x")
+    item, _ = await run_size_triggered_flush(
+        config, fake_clock, topic="t", payload=b"x"
+    )
 
     assert item.flush_result.done()
     with pytest.raises(RuntimeError, match="DB boom"):
@@ -131,7 +150,9 @@ async def test_flush_db_error_sets_exception(base_config, fake_clock: FakeClock,
 
 
 @pytest.mark.asyncio
-async def test_empty_timeout_advances_timer_without_flush(base_config, fake_clock: FakeClock):
+async def test_empty_timeout_advances_timer_without_flush(
+    base_config, fake_clock: FakeClock
+):
     config = base_config
     config.FLUSH_INTERVAL = 5
 
@@ -161,8 +182,8 @@ def test_build_wal_uri_variants(base_config):
 @pytest.mark.asyncio
 async def test_flush_triggers_by_count_backstop(base_config, fake_clock: FakeClock):
     config = base_config
-    config.FLUSH_SIZE = 10**9      # make size irrelevant
-    config.FLUSH_MAX_BATCHES = 2   # trigger on count=2
+    config.FLUSH_SIZE = 10**9  # make size irrelevant
+    config.FLUSH_MAX_BATCHES = 2  # trigger on count=2
 
     queue = asyncio.Queue()
     manager = WALManager(config=config, queue=queue, time_source=fake_clock)
@@ -203,10 +224,15 @@ async def test_custom_size_estimator(base_config, fake_clock: FakeClock):
     config.FLUSH_SIZE = 100
 
     # force immediate size trigger
-    def estimator(_item): return 120
+    def estimator(_item):
+        return 120
 
-    manager = WALManager(config=config, queue=asyncio.Queue(),
-                         time_source=fake_clock, size_estimator=estimator)
+    manager = WALManager(
+        config=config,
+        queue=asyncio.Queue(),
+        time_source=fake_clock,
+        size_estimator=estimator,
+    )
 
     with stub_encoder(topic="t"):
         item = make_item(1, topic="t")
@@ -219,7 +245,9 @@ async def test_custom_size_estimator(base_config, fake_clock: FakeClock):
 
 
 @pytest.mark.asyncio
-async def test_db_totals_and_offsets(base_config, fake_clock: FakeClock, mock_async_session_factory):
+async def test_db_totals_and_offsets(
+    base_config, fake_clock: FakeClock, mock_async_session_factory
+):
     config = base_config
     factory, session = mock_async_session_factory
     config.async_session_factory = factory
@@ -227,10 +255,13 @@ async def test_db_totals_and_offsets(base_config, fake_clock: FakeClock, mock_as
 
     # capture the wal file created to assert totals
     created = {}
+
     def add_capture(obj):
         from icestream.models import WALFile
+
         if isinstance(obj, WALFile):
             created["wal"] = obj
+
     session.add.side_effect = add_capture
 
     queue = asyncio.Queue()
@@ -238,12 +269,20 @@ async def test_db_totals_and_offsets(base_config, fake_clock: FakeClock, mock_as
 
     # two records (offsets 10..11) => total_messages = 2
     def enc(batch, broker_id):
-        return b"abcdefgh", [{
-            "topic": "t", "partition": 0,
-            "base_offset": 10, "last_offset": 11,
-            "byte_start": 0, "byte_end": 8,
-        }]
-    with patch("icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets", new=enc):
+        return b"abcdefgh", [
+            {
+                "topic": "t",
+                "partition": 0,
+                "base_offset": 10,
+                "last_offset": 11,
+                "byte_start": 0,
+                "byte_end": 8,
+            }
+        ]
+
+    with patch(
+        "icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets", new=enc
+    ):
         item = make_item(8, topic="t")
         await queue.put(item)
 
@@ -290,7 +329,7 @@ async def test_semaphore_serializes_flushes(base_config, fake_clock: FakeClock):
     async def slow_put(*a, **k):
         call_order.append("put_start")
         start.set()
-        await release.wait()   # block until we allow it
+        await release.wait()  # block until we allow it
         call_order.append("put_end")
         return MagicMock(etag="etag")
 
@@ -307,9 +346,11 @@ async def test_semaphore_serializes_flushes(base_config, fake_clock: FakeClock):
         await queue.put(i2)
 
         await manager.run_once()  # launch flush #1
-        await start.wait()        # ensure flush #1 is in put_async
+        await start.wait()  # ensure flush #1 is in put_async
 
-        await manager.run_once()  # triggers flush #2; semaphore should block it until release
+        await (
+            manager.run_once()
+        )  # triggers flush #2; semaphore should block it until release
 
         # allow flush #1 to finish, then flush #2 can proceed
         release.set()
@@ -318,7 +359,10 @@ async def test_semaphore_serializes_flushes(base_config, fake_clock: FakeClock):
     assert i1.flush_result.result() is True
     assert i2.flush_result.result() is True
     # we saw one put finish before the other started finishing
-    assert call_order == ["put_start", "put_end", "put_start", "put_end"] or call_order.count("put_start") == 2
+    assert (
+        call_order == ["put_start", "put_end", "put_start", "put_end"]
+        or call_order.count("put_start") == 2
+    )
 
 
 @pytest.mark.asyncio
@@ -329,8 +373,12 @@ async def test_encoder_error_sets_exception(base_config, fake_clock: FakeClock):
     queue = asyncio.Queue()
     manager = WALManager(config=config, queue=queue, time_source=fake_clock)
 
-    def boom(*a, **k): raise ValueError("encode failed")
-    with patch("icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets", new=boom):
+    def boom(*a, **k):
+        raise ValueError("encode failed")
+
+    with patch(
+        "icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets", new=boom
+    ):
         item = make_item(1, topic="t")
         await queue.put(item)
 
@@ -358,9 +406,10 @@ async def test_uploaded_file_is_retrievable_from_memorystore(
     payload = b"hello-wal"
 
     fixed_key = "wal/2025/08/11/12/34/aa/1234567890-b1-deadbeef.wal"
-    with stub_encoder(topic="t", payload=payload), \
-         patch.object(WALManager, "_generate_object_key", return_value=fixed_key):
-
+    with (
+        stub_encoder(topic="t", payload=payload),
+        patch.object(WALManager, "_generate_object_key", return_value=fixed_key),
+    ):
         queue = asyncio.Queue()
         manager = WALManager(config=config, queue=queue, time_source=fake_clock)
 
@@ -384,11 +433,31 @@ async def test_size_estimator_error_fallbacks(base_config, fake_clock: FakeClock
     config.FLUSH_SIZE = 2048  # 2 * 1024
     config.FLUSH_INTERVAL = 999
 
-    def bad_estimator(_item): raise RuntimeError("boom")
+    def bad_estimator(_item):
+        raise RuntimeError("boom")
 
-    with patch("icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets",
-               new=lambda b, bid: (b"d", [{"topic":"t","partition":0,"base_offset":0,"last_offset":0,"byte_start":0,"byte_end":1}])):
-        m = WALManager(config=config, queue=asyncio.Queue(), time_source=fake_clock, size_estimator=bad_estimator)
+    with patch(
+        "icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets",
+        new=lambda b, bid: (
+            b"d",
+            [
+                {
+                    "topic": "t",
+                    "partition": 0,
+                    "base_offset": 0,
+                    "last_offset": 0,
+                    "byte_start": 0,
+                    "byte_end": 1,
+                }
+            ],
+        ),
+    ):
+        m = WALManager(
+            config=config,
+            queue=asyncio.Queue(),
+            time_source=fake_clock,
+            size_estimator=bad_estimator,
+        )
 
         # two items should cross 2k via fallback 1024+1024
         i1 = make_item(1, "t")
@@ -403,14 +472,29 @@ async def test_size_estimator_error_fallbacks(base_config, fake_clock: FakeClock
         assert i1.flush_result.result() is True
         assert i2.flush_result.result() is True
 
+
 @pytest.mark.asyncio
 async def test_put_error_sets_exception(base_config, fake_clock: FakeClock):
     config = base_config
     config.FLUSH_SIZE = 1
     config.store.put_async = AsyncMock(side_effect=IOError("put failed"))
 
-    with patch("icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets",
-               new=lambda b, bid: (b"x", [{"topic":"t","partition":0,"base_offset":0,"last_offset":0,"byte_start":0,"byte_end":1}])):
+    with patch(
+        "icestream.kafkaserver.wal.manager.encode_kafka_wal_file_with_offsets",
+        new=lambda b, bid: (
+            b"x",
+            [
+                {
+                    "topic": "t",
+                    "partition": 0,
+                    "base_offset": 0,
+                    "last_offset": 0,
+                    "byte_start": 0,
+                    "byte_end": 1,
+                }
+            ],
+        ),
+    ):
         m = WALManager(config=config, queue=asyncio.Queue(), time_source=fake_clock)
         it = make_item(1, "t")
         await m.queue.put(it)
@@ -422,6 +506,7 @@ async def test_put_error_sets_exception(base_config, fake_clock: FakeClock):
         with pytest.raises(IOError, match="put failed"):
             it.flush_result.result()
 
+
 def test_build_uri_none_vs_empty_prefix(base_config):
     base_config.WAL_BUCKET = "b"
     q = asyncio.Queue()
@@ -432,6 +517,7 @@ def test_build_uri_none_vs_empty_prefix(base_config):
 
     base_config.WAL_BUCKET_PREFIX = ""
     assert m._build_wal_uri("k") == "b/k"
+
 
 def test_default_size_estimator():
     result = default_size_estimator({})

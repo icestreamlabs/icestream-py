@@ -19,10 +19,12 @@ PARQUET_RECORD_MAPPING = {
     "key": pa.binary(),
     "value": pa.binary(),
     "headers": pa.list_(
-        pa.struct([
-            ("key", pa.string()),
-            ("value", pa.binary()),
-        ])
+        pa.struct(
+            [
+                ("key", pa.string()),
+                ("value", pa.binary()),
+            ]
+        )
     ),
 }
 
@@ -45,8 +47,11 @@ class WalToParquetProcessor(CompactionProcessor):
     def _estimate_record_size(r: dict) -> int:
         k = len(r["key"]) if r["key"] else 0
         v = len(r["value"]) if r["value"] else 0
-        h = sum((len(hd["key"]) + (len(hd["value"]) if hd["value"] else 0)) for hd in (r["headers"] or []))
-        return k + v + h + 64 # include small buffer
+        h = sum(
+            (len(hd["key"]) + (len(hd["value"]) if hd["value"] else 0))
+            for hd in (r["headers"] or [])
+        )
+        return k + v + h + 64  # include small buffer
 
     @staticmethod
     def bucket_records(ctx: CompactionContext) -> Dict[Tuple[str, int], List[dict]]:
@@ -67,21 +72,25 @@ class WalToParquetProcessor(CompactionProcessor):
                     if ts_ms is not None:
                         ts_ms = ts_ms + rec.timestamp_delta
 
-                    buckets[(topic, partition)].append({
-                        "partition": partition,
-                        "offset": offset,
-                        "timestamp_ms": ts_ms,
-                        "key": rec.key,
-                        "value": rec.value,
-                        "headers": [
-                            {"key": h.key, "value": h.value}
-                            for h in rec.headers
-                        ] or None,
-                    })
+                    buckets[(topic, partition)].append(
+                        {
+                            "partition": partition,
+                            "offset": offset,
+                            "timestamp_ms": ts_ms,
+                            "key": rec.key,
+                            "value": rec.value,
+                            "headers": [
+                                {"key": h.key, "value": h.value} for h in rec.headers
+                            ]
+                            or None,
+                        }
+                    )
 
         return buckets
 
-    async def _flush_buckets(self, ctx: CompactionContext, topic: str, partition: int, rows: List[dict]):
+    async def _flush_buckets(
+        self, ctx: CompactionContext, topic: str, partition: int, rows: List[dict]
+    ):
         target_bytes = ctx.config.PARQUET_TARGET_FILE_BYTES
 
         chunk: list[dict] = []
@@ -97,7 +106,9 @@ class WalToParquetProcessor(CompactionProcessor):
         if chunk:
             await self._flush_chunk(ctx, topic, partition, chunk)
 
-    async def _flush_chunk(self, ctx: CompactionContext, topic: str, partition: int, chunk_rows: List[dict]):
+    async def _flush_chunk(
+        self, ctx: CompactionContext, topic: str, partition: int, chunk_rows: List[dict]
+    ):
         if not chunk_rows:
             return
 
@@ -105,7 +116,7 @@ class WalToParquetProcessor(CompactionProcessor):
         table = pa.Table.from_pylist(chunk_rows, schema=PARQUET_RECORD_SCHEMA)
 
         # row group size estimation
-        sample = chunk_rows[:min(1000, len(chunk_rows))]
+        sample = chunk_rows[: min(1000, len(chunk_rows))]
         kvh = sum(self._estimate_record_size(r) for r in sample)
         avg_row = max(64, kvh // max(1, len(sample)))
         rows_per_rg = max(1, ctx.config.PARQUET_ROW_GROUP_TARGET_BYTES // avg_row)
@@ -124,11 +135,24 @@ class WalToParquetProcessor(CompactionProcessor):
         min_off = chunk_rows[0]["offset"]
         max_off = chunk_rows[-1]["offset"]
 
-        ts_vals = [r["timestamp_ms"] for r in chunk_rows if r["timestamp_ms"] is not None]
-        min_ts = datetime.datetime.fromtimestamp(min(ts_vals) / 1000, tz=datetime.UTC) if ts_vals else None
-        max_ts = datetime.datetime.fromtimestamp(max(ts_vals) / 1000, tz=datetime.UTC) if ts_vals else None
+        ts_vals = [
+            r["timestamp_ms"] for r in chunk_rows if r["timestamp_ms"] is not None
+        ]
+        min_ts = (
+            datetime.datetime.fromtimestamp(min(ts_vals) / 1000, tz=datetime.UTC)
+            if ts_vals
+            else None
+        )
+        max_ts = (
+            datetime.datetime.fromtimestamp(max(ts_vals) / 1000, tz=datetime.UTC)
+            if ts_vals
+            else None
+        )
 
-        key = ctx.config.PARQUET_PREFIX.rstrip("/") + f"/topics/{topic}/partition={partition}/{min_off}-{max_off}-gen0.parquet"
+        key = (
+            ctx.config.PARQUET_PREFIX.rstrip("/")
+            + f"/topics/{topic}/partition={partition}/{min_off}-{max_off}-gen0.parquet"
+        )
         await ctx.config.store.put_async(key, io.BytesIO(data))
 
         async with ctx.config.async_session_factory() as session:

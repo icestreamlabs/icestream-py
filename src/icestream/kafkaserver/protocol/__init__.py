@@ -3,7 +3,11 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Self, Optional, List
 
-from icestream.kafkaserver.utils import decode_signed_varint, decode_varint, decode_signed_varlong
+from icestream.kafkaserver.utils import (
+    decode_signed_varint,
+    decode_varint,
+    decode_signed_varlong,
+)
 
 
 @dataclass

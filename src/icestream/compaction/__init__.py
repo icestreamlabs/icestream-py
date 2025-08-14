@@ -17,7 +17,12 @@ from icestream.logger import log
 
 
 class CompactorWorker:
-    def __init__(self, config: Config, processors: list[CompactionProcessor], time_source=time.monotonic):
+    def __init__(
+        self,
+        config: Config,
+        processors: list[CompactionProcessor],
+        time_source=time.monotonic,
+    ):
         self.config = config
         self.time_source = time_source
         self.processors = processors
@@ -72,8 +77,14 @@ class CompactorWorker:
     async def _select_wal_models(self, session) -> tuple[Sequence[WALFileModel], int]:
         total_bytes = 0
         selected: list[WALFileModel] = []
-        while total_bytes < self.config.MAX_COMPACTION_BYTES and len(selected) < self.config.MAX_COMPACTION_WAL_FILES:
-            limit = min(self.config.MAX_COMPACTION_SELECT_LIMIT, self.config.MAX_COMPACTION_WAL_FILES - len(selected))
+        while (
+            total_bytes < self.config.MAX_COMPACTION_BYTES
+            and len(selected) < self.config.MAX_COMPACTION_WAL_FILES
+        ):
+            limit = min(
+                self.config.MAX_COMPACTION_SELECT_LIMIT,
+                self.config.MAX_COMPACTION_WAL_FILES - len(selected),
+            )
             result = await session.execute(
                 select(WALFileModel)
                 .options(joinedload(WALFileModel.wal_file_offsets))
@@ -93,7 +104,9 @@ class CompactorWorker:
                 total_bytes += wal.total_bytes
         return selected, total_bytes
 
-    async def _fetch_and_decode(self, wal_models: Sequence[WALFileModel]) -> list[DecodedWALFile]:
+    async def _fetch_and_decode(
+        self, wal_models: Sequence[WALFileModel]
+    ) -> list[DecodedWALFile]:
         decoded: list[DecodedWALFile] = []
         for wal in wal_models:
             get_result = await self.config.store.get_async(wal.uri)
@@ -104,11 +117,21 @@ class CompactorWorker:
         return decoded
 
     async def _select_parquet_candidates(self, session):
-        rows = (await session.execute(
-            select(ParquetFile)
-            .where(ParquetFile.compacted_at.is_(None))
-            .order_by(ParquetFile.topic_name, ParquetFile.partition_number, ParquetFile.min_offset)
-        )).scalars().all()
+        rows = (
+            (
+                await session.execute(
+                    select(ParquetFile)
+                    .where(ParquetFile.compacted_at.is_(None))
+                    .order_by(
+                        ParquetFile.topic_name,
+                        ParquetFile.partition_number,
+                        ParquetFile.min_offset,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         out: dict[tuple[str, int], list[ParquetFile]] = {}
         if not rows:
@@ -128,16 +151,22 @@ class CompactorWorker:
             if cur_key is None:
                 cur_key = key
             if key != cur_key:
-                self._maybe_pick_bucket(out, cur_key, bucket, now, tg, min_files, max_files, force_age_sec)
+                self._maybe_pick_bucket(
+                    out, cur_key, bucket, now, tg, min_files, max_files, force_age_sec
+                )
                 cur_key, bucket = key, []
             bucket.append(pf)
         if bucket:
-            self._maybe_pick_bucket(out, cur_key, bucket, now, tg, min_files, max_files, force_age_sec)
+            self._maybe_pick_bucket(
+                out, cur_key, bucket, now, tg, min_files, max_files, force_age_sec
+            )
 
         return out
 
     @staticmethod
-    def _maybe_pick_bucket(out, key, files, now, target_bytes, min_files, max_files, force_age_sec):
+    def _maybe_pick_bucket(
+        out, key, files, now, target_bytes, min_files, max_files, force_age_sec
+    ):
         if not files:
             return
         # size trigger
@@ -154,7 +183,11 @@ class CompactorWorker:
         # age trigger
         oldest = files[0]
         oldest_ts = oldest.created_at or oldest.updated_at
-        if oldest_ts and (now - oldest_ts).total_seconds() >= force_age_sec and len(files) >= min_files:
+        if (
+            oldest_ts
+            and (now - oldest_ts).total_seconds() >= force_age_sec
+            and len(files) >= min_files
+        ):
             out[key] = files[:max_files]
 
 
@@ -175,6 +208,9 @@ class IcebergCompactor(CompactionProcessor):
                         log.info(f"no schema for topic {topic.name}")
                         continue
 
+
 def build_uri(config, key: str) -> str:
-    bucket_prefix = f"/{config.WAL_BUCKET_PREFIX.strip('/')}" if config.WAL_BUCKET_PREFIX else ""
+    bucket_prefix = (
+        f"/{config.WAL_BUCKET_PREFIX.strip('/')}" if config.WAL_BUCKET_PREFIX else ""
+    )
     return f"s3://{config.WAL_BUCKET}{bucket_prefix}/{key}"

@@ -40,6 +40,7 @@ def capture_added():
         session = cfg.async_session_factory.return_value.__aenter__.return_value
         session.add.side_effect = lambda obj: added.append(obj)
         return added
+
     return _capture
 
 
@@ -61,7 +62,9 @@ def run_parquet_compaction():
         else:
             mocked.side_effect = ValueError("overlap")
 
-        with patch("icestream.compaction.parquet_compactor.assert_no_overlap", new=mocked):
+        with patch(
+            "icestream.compaction.parquet_compactor.assert_no_overlap", new=mocked
+        ):
             if overlap_ok:
                 await compactor.apply(ctx)
             else:
@@ -72,6 +75,7 @@ def run_parquet_compaction():
 
 
 # --------------------------------- tests --------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_apply_no_candidates_uses_no_session(base_config):
@@ -94,17 +98,33 @@ async def test_apply_no_candidates_uses_no_session(base_config):
 
 
 @pytest.mark.asyncio
-async def test_compacts_parents_into_single_output(base_config, capture_added, run_parquet_compaction):
+async def test_compacts_parents_into_single_output(
+    base_config, capture_added, run_parquet_compaction
+):
     topic = "orders"
     partition = 3
 
     # parent 1 offsets 0..4, parent 2 offsets 5..9
     rows1 = [
-        {"partition": partition, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
+        {
+            "partition": partition,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
         for i in range(0, 5)
     ]
     rows2 = [
-        {"partition": partition, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
+        {
+            "partition": partition,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
         for i in range(5, 10)
     ]
     pbytes1 = make_parquet_bytes(rows1)
@@ -141,7 +161,9 @@ async def test_compacts_parents_into_single_output(base_config, capture_added, r
     cfg.WAL_BUCKET_PREFIX = "wal-prefix"
 
     added = capture_added(cfg)
-    await run_parquet_compaction(cfg, {(topic, partition): [parent1, parent2]}, overlap_ok=True)
+    await run_parquet_compaction(
+        cfg, {(topic, partition): [parent1, parent2]}, overlap_ok=True
+    )
 
     # child parquet file and lineage rows must be recorded
     child_pfs = [o for o in added if isinstance(o, ParquetFile)]
@@ -169,7 +191,8 @@ async def test_compacts_parents_into_single_output(base_config, capture_added, r
 
     child_keys = await list_paths(cfg.store, prefix=cfg.PARQUET_PREFIX)
     child_keys = [
-        k for k in child_keys
+        k
+        for k in child_keys
         if k.startswith(f"{cfg.PARQUET_PREFIX}/topics/{topic}/partition={partition}/")
         and k.endswith("-gen1.parquet")
     ]
@@ -184,13 +207,22 @@ async def test_compacts_parents_into_single_output(base_config, capture_added, r
 
 
 @pytest.mark.asyncio
-async def test_rollover_when_target_bytes_tiny(base_config, capture_added, run_parquet_compaction):
+async def test_rollover_when_target_bytes_tiny(
+    base_config, capture_added, run_parquet_compaction
+):
     topic = "events"
     partition = 0
 
     # build one parent with 10 rows 0..9, force row_group_size=1 so the compactor can split on rg boundaries
     rows = [
-        {"partition": partition, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
+        {
+            "partition": partition,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
         for i in range(10)
     ]
     pbytes = make_parquet_bytes(rows, row_group_size=1)
@@ -220,7 +252,8 @@ async def test_rollover_when_target_bytes_tiny(base_config, capture_added, run_p
     # look for produced children for gen3 because parent gen is 2
     out_keys = await list_paths(cfg.store, prefix=cfg.PARQUET_PREFIX)
     out_keys = [
-        k for k in out_keys
+        k
+        for k in out_keys
         if k.startswith(f"{cfg.PARQUET_PREFIX}/topics/{topic}/partition={partition}/")
         and k.endswith("-gen3.parquet")
     ]
@@ -244,7 +277,9 @@ async def test_rollover_when_target_bytes_tiny(base_config, capture_added, run_p
 
 
 @pytest.mark.asyncio
-async def test_overlap_error_aborts_child_and_tombstones(base_config, capture_added, run_parquet_compaction):
+async def test_overlap_error_aborts_child_and_tombstones(
+    base_config, capture_added, run_parquet_compaction
+):
     cfg = base_config
     cfg.store = MemoryStore()
     cfg.PARQUET_COMPACTION_TARGET_BYTES = 10_000_000
@@ -255,8 +290,17 @@ async def test_overlap_error_aborts_child_and_tombstones(base_config, capture_ad
     # build one parent [0..4]
     topic, partition = "overlaps", 0
     parent_key = f"parquet/parents/{topic}/partition={partition}/0-4-gen0.parquet"
-    rows = [{"partition": partition, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
-            for i in range(5)]
+    rows = [
+        {
+            "partition": partition,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
+        for i in range(5)
+    ]
     await cfg.store.put_async(parent_key, io.BytesIO(make_parquet_bytes(rows)))
 
     parent = ParquetFile(
@@ -289,7 +333,9 @@ async def test_overlap_error_aborts_child_and_tombstones(base_config, capture_ad
 
 
 @pytest.mark.asyncio
-async def test_compacts_multiple_groups_in_one_apply(base_config, capture_added, run_parquet_compaction):
+async def test_compacts_multiple_groups_in_one_apply(
+    base_config, capture_added, run_parquet_compaction
+):
     cfg = base_config
     cfg.store = MemoryStore()
     cfg.PARQUET_COMPACTION_TARGET_BYTES = 10_000_000
@@ -298,29 +344,65 @@ async def test_compacts_multiple_groups_in_one_apply(base_config, capture_added,
     cfg.WAL_BUCKET_PREFIX = "pfx"
 
     # group a: topic=a, partition=0, offsets 0..2
-    rows_a = [{"partition": 0, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
-              for i in range(3)]
+    rows_a = [
+        {
+            "partition": 0,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
+        for i in range(3)
+    ]
     key_a = "parquet/parents/a/partition=0/0-2-gen0.parquet"
     await cfg.store.put_async(key_a, io.BytesIO(make_parquet_bytes(rows_a)))
     parent_a = ParquetFile(
-        topic_name="a", partition_number=0, uri=key_a, total_bytes=1, row_count=3,
-        min_offset=0, max_offset=2, min_timestamp=None, max_timestamp=None, generation=0
+        topic_name="a",
+        partition_number=0,
+        uri=key_a,
+        total_bytes=1,
+        row_count=3,
+        min_offset=0,
+        max_offset=2,
+        min_timestamp=None,
+        max_timestamp=None,
+        generation=0,
     )
     parent_a.id = 201
 
     # group b: topic=b, partition=1, offsets 10..14
-    rows_b = [{"partition": 1, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
-              for i in range(10, 15)]
+    rows_b = [
+        {
+            "partition": 1,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
+        for i in range(10, 15)
+    ]
     key_b = "parquet/parents/b/partition=1/10-14-gen0.parquet"
     await cfg.store.put_async(key_b, io.BytesIO(make_parquet_bytes(rows_b)))
     parent_b = ParquetFile(
-        topic_name="b", partition_number=1, uri=key_b, total_bytes=1, row_count=5,
-        min_offset=10, max_offset=14, min_timestamp=None, max_timestamp=None, generation=0
+        topic_name="b",
+        partition_number=1,
+        uri=key_b,
+        total_bytes=1,
+        row_count=5,
+        min_offset=10,
+        max_offset=14,
+        min_timestamp=None,
+        max_timestamp=None,
+        generation=0,
     )
     parent_b.id = 202
 
     added = capture_added(cfg)
-    await run_parquet_compaction(cfg, {("a", 0): [parent_a], ("b", 1): [parent_b]}, overlap_ok=True)
+    await run_parquet_compaction(
+        cfg, {("a", 0): [parent_a], ("b", 1): [parent_b]}, overlap_ok=True
+    )
 
     # verify we got one child parquet file for each group
     children = [o for o in added if isinstance(o, ParquetFile)]
@@ -348,7 +430,9 @@ async def test_compacts_multiple_groups_in_one_apply(base_config, capture_added,
 
 
 @pytest.mark.asyncio
-async def test_compacts_non_contiguous_parents_spanning_range(base_config, capture_added, run_parquet_compaction):
+async def test_compacts_non_contiguous_parents_spanning_range(
+    base_config, capture_added, run_parquet_compaction
+):
     cfg = base_config
     cfg.store = MemoryStore()
     cfg.PARQUET_COMPACTION_TARGET_BYTES = 10_000_000
@@ -359,10 +443,28 @@ async def test_compacts_non_contiguous_parents_spanning_range(base_config, captu
     topic, partition = "span", 2
 
     # parent1 covers 0..2, parent2 covers 5..7 (gap 3..4): compactor still concatenates in order
-    rows_p1 = [{"partition": partition, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
-               for i in range(0, 3)]
-    rows_p2 = [{"partition": partition, "offset": i, "timestamp_ms": None, "key": None, "value": None, "headers": []}
-               for i in range(5, 8)]
+    rows_p1 = [
+        {
+            "partition": partition,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
+        for i in range(0, 3)
+    ]
+    rows_p2 = [
+        {
+            "partition": partition,
+            "offset": i,
+            "timestamp_ms": None,
+            "key": None,
+            "value": None,
+            "headers": [],
+        }
+        for i in range(5, 8)
+    ]
 
     key1 = f"parquet/parents/{topic}/partition={partition}/0-2-gen0.parquet"
     key2 = f"parquet/parents/{topic}/partition={partition}/5-7-gen0.parquet"
@@ -370,13 +472,29 @@ async def test_compacts_non_contiguous_parents_spanning_range(base_config, captu
     await cfg.store.put_async(key2, io.BytesIO(make_parquet_bytes(rows_p2)))
 
     p1 = ParquetFile(
-        topic_name=topic, partition_number=partition, uri=key1, total_bytes=1, row_count=3,
-        min_offset=0, max_offset=2, min_timestamp=None, max_timestamp=None, generation=0
+        topic_name=topic,
+        partition_number=partition,
+        uri=key1,
+        total_bytes=1,
+        row_count=3,
+        min_offset=0,
+        max_offset=2,
+        min_timestamp=None,
+        max_timestamp=None,
+        generation=0,
     )
     p1.id = 301
     p2 = ParquetFile(
-        topic_name=topic, partition_number=partition, uri=key2, total_bytes=1, row_count=3,
-        min_offset=5, max_offset=7, min_timestamp=None, max_timestamp=None, generation=0
+        topic_name=topic,
+        partition_number=partition,
+        uri=key2,
+        total_bytes=1,
+        row_count=3,
+        min_offset=5,
+        max_offset=7,
+        min_timestamp=None,
+        max_timestamp=None,
+        generation=0,
     )
     p2.id = 302
 
@@ -394,7 +512,9 @@ async def test_compacts_non_contiguous_parents_spanning_range(base_config, captu
     # parents should be tombstoned
     assert p1.compacted_at is not None and p2.compacted_at is not None
 
-    out_keys = await list_paths(cfg.store, prefix=f"{cfg.PARQUET_PREFIX}/topics/{topic}/partition={partition}/")
+    out_keys = await list_paths(
+        cfg.store, prefix=f"{cfg.PARQUET_PREFIX}/topics/{topic}/partition={partition}/"
+    )
     assert len(out_keys) == 1
     out_key = out_keys[0]
     res = await cfg.store.get_async(out_key)

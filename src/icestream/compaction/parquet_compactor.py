@@ -54,7 +54,9 @@ class ParquetCompactor(CompactionProcessor):
         max_gen = max((p.generation for p in parents), default=0)
 
         # initialize first output
-        state = self._new_output(out_min_off=parents[0].min_offset, last_off=parents[0].min_offset)
+        state = self._new_output(
+            out_min_off=parents[0].min_offset, last_off=parents[0].min_offset
+        )
 
         for parent in parents:
             # read parent file as a stream
@@ -77,10 +79,14 @@ class ParquetCompactor(CompactionProcessor):
                             ctx, session, topic, partition, parents, max_gen, state
                         )
                         # new file starts right after the last written offset
-                        state = self._new_output(out_min_off=state.last_off + 1, last_off=state.last_off + 1)
+                        state = self._new_output(
+                            out_min_off=state.last_off + 1, last_off=state.last_off + 1
+                        )
 
         # finalize trailing output
-        await self._finalize_and_register(ctx, session, topic, partition, parents, max_gen, state)
+        await self._finalize_and_register(
+            ctx, session, topic, partition, parents, max_gen, state
+        )
 
         # tombstone parents
         now_ts = datetime.datetime.now(datetime.UTC)
@@ -109,7 +115,7 @@ class ParquetCompactor(CompactionProcessor):
 
     @staticmethod
     async def _finalize_and_register(
-            ctx: CompactionContext,
+        ctx: CompactionContext,
         session,
         topic: str,
         partition: int,
@@ -130,13 +136,15 @@ class ParquetCompactor(CompactionProcessor):
 
         key = (
             ctx.config.PARQUET_PREFIX.rstrip("/")
-            + f"/topics/{topic}/partition={partition}/{state.out_min_off}-{state.last_off}-gen{max_gen+1}.parquet"
+            + f"/topics/{topic}/partition={partition}/{state.out_min_off}-{state.last_off}-gen{max_gen + 1}.parquet"
         )
         # put_async expects IO[bytes]
         await ctx.config.store.put_async(key, io.BytesIO(data))
         uri = build_uri(ctx.config, key)
 
-        await assert_no_overlap(session, topic, partition, state.out_min_off, state.last_off)
+        await assert_no_overlap(
+            session, topic, partition, state.out_min_off, state.last_off
+        )
         pf = ParquetFile(
             topic_name=topic,
             partition_number=partition,
@@ -155,7 +163,9 @@ class ParquetCompactor(CompactionProcessor):
         # lineage: record all parents that contributed
         for parent in parents:
             session.add(
-                ParquetFileParent(child_parquet_file_id=pf.id, parent_parquet_file_id=parent.id)
+                ParquetFileParent(
+                    child_parquet_file_id=pf.id, parent_parquet_file_id=parent.id
+                )
             )
 
         return pf

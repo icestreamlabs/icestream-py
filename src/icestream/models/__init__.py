@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
     and_,
-    select
+    select,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -29,8 +29,11 @@ class IntIdMixin:
 
 
 class BigIntIdMixin:
-    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(always=True),
-                                    primary_key=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        Identity(always=True),
+        primary_key=True,
+    )
 
 
 class TimestampMixin:
@@ -179,8 +182,12 @@ class ParquetFile(Base, BigIntIdMixin, TimestampMixin):
         ),
         UniqueConstraint("uri"),
         Index("ix_pf_topic_partition", "topic_name", "partition_number"),
-        Index("ix_pf_topic_partition_min", "topic_name", "partition_number", "min_offset"),
-        Index("ix_pf_topic_partition_max", "topic_name", "partition_number", "max_offset"),
+        Index(
+            "ix_pf_topic_partition_min", "topic_name", "partition_number", "min_offset"
+        ),
+        Index(
+            "ix_pf_topic_partition_max", "topic_name", "partition_number", "max_offset"
+        ),
     )
 
 
@@ -214,7 +221,9 @@ class ParquetFileParent(Base, BigIntIdMixin, TimestampMixin):
     )
 
 
-async def assert_no_overlap(session, topic: str, partition: int, min_off: int, max_off: int) -> None:
+async def assert_no_overlap(
+    session, topic: str, partition: int, min_off: int, max_off: int
+) -> None:
     q = (
         select(ParquetFile.id)
         .where(
@@ -227,4 +236,6 @@ async def assert_no_overlap(session, topic: str, partition: int, min_off: int, m
         .limit(1)
     )
     if (await session.execute(q)).scalar() is not None:
-        raise ValueError(f"Overlapping Parquet range for {topic}[{partition}] {min_off}-{max_off}")
+        raise ValueError(
+            f"Overlapping Parquet range for {topic}[{partition}] {min_off}-{max_off}"
+        )

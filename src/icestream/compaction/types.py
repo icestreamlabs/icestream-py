@@ -17,5 +17,3 @@ class CompactionContext:
 
 class CompactionProcessor(Protocol):
     async def apply(self, ctx: CompactionContext): ...
-
-

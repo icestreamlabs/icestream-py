@@ -3,14 +3,18 @@ import time
 from io import BytesIO
 from typing import List
 
-from icestream.kafkaserver.protocol import KafkaRecordBatch, KafkaRecordHeader, KafkaRecord
+from icestream.kafkaserver.protocol import (
+    KafkaRecordBatch,
+    KafkaRecordHeader,
+    KafkaRecord,
+)
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.utils import encode_varint, decode_varint
 from icestream.kafkaserver.wal import WALBatch, WALFile
 
 
 def encode_kafka_wal_file_with_offsets(
-        batches: List[ProduceTopicPartitionData], broker_id: str
+    batches: List[ProduceTopicPartitionData], broker_id: str
 ) -> tuple[bytes, list[dict]]:
     buf = BytesIO()
     offset_metadata = []
@@ -18,8 +22,9 @@ def encode_kafka_wal_file_with_offsets(
     # Write WAL file header
     buf.write(b"WAL1")  # Magic prefix
     buf.write(struct.pack(">B", 1))  # '>B': big-endian unsigned char (1 byte) - version
-    buf.write(struct.pack(">Q",
-                          int(time.time() * 1000)))  # '>Q': big-endian unsigned long long (8 bytes) - flushed_at timestamp in ms
+    buf.write(
+        struct.pack(">Q", int(time.time() * 1000))
+    )  # '>Q': big-endian unsigned long long (8 bytes) - flushed_at timestamp in ms
 
     # Write broker ID as length-prefixed UTF-8 string
     broker_bytes = broker_id.encode("utf-8")
@@ -31,7 +36,9 @@ def encode_kafka_wal_file_with_offsets(
         topic_bytes = batch.topic.encode("utf-8")
         buf.write(encode_varint(len(topic_bytes)))  # Length of topic name (varint)
         buf.write(topic_bytes)
-        buf.write(struct.pack(">i", batch.partition))  # '>i': big-endian signed int (4 bytes) - partition number
+        buf.write(
+            struct.pack(">i", batch.partition)
+        )  # '>i': big-endian signed int (4 bytes) - partition number
 
         record_batch_bytes_io = BytesIO()
         rb = batch.kafka_record_batch
@@ -87,14 +94,16 @@ def encode_kafka_wal_file_with_offsets(
         buf.write(record_batch_bytes)
         byte_end = buf.tell()
 
-        offset_metadata.append({
-            "topic": batch.topic,
-            "partition": batch.partition,
-            "base_offset": rb.base_offset,
-            "last_offset": rb.base_offset + rb.last_offset_delta,
-            "byte_start": byte_start,
-            "byte_end": byte_end,
-        })
+        offset_metadata.append(
+            {
+                "topic": batch.topic,
+                "partition": batch.partition,
+                "base_offset": rb.base_offset,
+                "last_offset": rb.base_offset + rb.last_offset_delta,
+                "byte_start": byte_start,
+                "byte_end": byte_end,
+            }
+        )
 
     return buf.getvalue(), offset_metadata
 
