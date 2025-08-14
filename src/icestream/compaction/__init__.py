@@ -2,8 +2,7 @@ import asyncio
 import datetime
 import time
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Protocol, List, Callable, Sequence
+from typing import Sequence
 
 import httpx
 from sqlalchemy import select
@@ -97,10 +96,9 @@ class CompactorWorker:
     async def _fetch_and_decode(self, wal_models: Sequence[WALFileModel]) -> list[DecodedWALFile]:
         decoded: list[DecodedWALFile] = []
         for wal in wal_models:
-            data = await self.config.store.get_async(wal.uri)
-            # obstore returns an object with .bytes()
-            decoded_file = decode_kafka_wal_file(bytes(data.bytes()))
-            # attach id for provenance if helpful
+            get_result = await self.config.store.get_async(wal.uri)
+            data = await get_result.bytes_async()
+            decoded_file = decode_kafka_wal_file(bytes(data))
             decoded_file.id = wal.id  # type: ignore[attr-defined]
             decoded.append(decoded_file)
         return decoded
@@ -176,3 +174,7 @@ class IcebergCompactor(CompactionProcessor):
                     if not topic.schema:
                         log.info(f"no schema for topic {topic.name}")
                         continue
+
+def build_uri(config, key: str) -> str:
+    bucket_prefix = f"/{config.WAL_BUCKET_PREFIX.strip('/')}" if config.WAL_BUCKET_PREFIX else ""
+    return f"s3://{config.WAL_BUCKET}{bucket_prefix}/{key}"

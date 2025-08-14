@@ -172,7 +172,7 @@ async def handle_kafka_request(
     if api_key not in request_map or api_key not in api_compatibility:
         return
 
-    api_version = struct.unpack(">H", buffer[2:4])[0]
+    api_version = struct.unpack(">H", buffer[2:4])[0] # the api version is the next 2 bytes also big endian
     buffer = io.BytesIO(buffer)
 
     log.info(f"got api key {api_key} with api version {api_version}")

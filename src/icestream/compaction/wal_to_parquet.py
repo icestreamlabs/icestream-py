@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from icestream.compaction import build_uri
 from icestream.compaction.types import CompactionContext, CompactionProcessor
 from icestream.compaction.schema import PARQUET_RECORD_SCHEMA
 from icestream.kafkaserver.protocol import decode_kafka_records
@@ -27,8 +28,6 @@ PARQUET_RECORD_MAPPING = {
 
 
 class WalToParquetProcessor(CompactionProcessor):
-    name = "wal_to_parquet"
-
     async def apply(self, ctx: CompactionContext) -> None:
         if not ctx.wal_decoded:
             return
@@ -57,14 +56,14 @@ class WalToParquetProcessor(CompactionProcessor):
             for batch in wf.batches:
                 topic = batch.topic
                 partition = batch.partition
-                base = getattr(batch, "base_offset", None)
+                base = batch.kafka_record_batch.base_offset
                 if base is None:
                     continue
 
                 records = decode_kafka_records(batch.kafka_record_batch.records)
                 for rec in records:
                     offset = base + rec.offset_delta
-                    ts_ms = getattr(batch.kafka_record_batch, "first_timestamp", None)
+                    ts_ms = batch.kafka_record_batch.base_timestamp
                     if ts_ms is not None:
                         ts_ms = ts_ms + rec.timestamp_delta
 
@@ -102,7 +101,8 @@ class WalToParquetProcessor(CompactionProcessor):
         if not chunk_rows:
             return
 
-        table = pa.Table.from_pylist(chunk_rows, mapping=PARQUET_RECORD_MAPPING, schema=PARQUET_RECORD_SCHEMA)
+        # noinspection PyArgumentList
+        table = pa.Table.from_pylist(chunk_rows, schema=PARQUET_RECORD_SCHEMA)
 
         # row group size estimation
         sample = chunk_rows[:min(1000, len(chunk_rows))]
@@ -136,7 +136,7 @@ class WalToParquetProcessor(CompactionProcessor):
             pf = ParquetFile(
                 topic_name=topic,
                 partition_number=partition,
-                uri=self._build_uri(ctx, key),
+                uri=build_uri(ctx.config, key),
                 total_bytes=total_bytes,
                 row_count=table.num_rows,
                 min_offset=min_off,
@@ -150,8 +150,3 @@ class WalToParquetProcessor(CompactionProcessor):
 
             for wm in ctx.wal_models:
                 session.add(ParquetFileSource(parquet_file_id=pf.id, wal_file_id=wm.id))
-
-    @staticmethod
-    def _build_uri(ctx: CompactionContext, key: str) -> str:
-        bucket_prefix = f"/{ctx.config.WAL_BUCKET_PREFIX.strip('/')}" if ctx.config.WAL_BUCKET_PREFIX else ""
-        return f"s3://{ctx.config.WAL_BUCKET}{bucket_prefix}/{key}" # assume s3 for now

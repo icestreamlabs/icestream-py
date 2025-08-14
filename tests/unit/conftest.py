@@ -1,6 +1,9 @@
+from asyncio import StreamWriter, Queue
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
+
+from icestream.kafkaserver.server import Connection, Server
 from tests.utils.time import FakeClock
 
 @pytest.fixture
@@ -36,3 +39,13 @@ def base_config(mock_async_session_factory):
     cfg.FLUSH_MAX_BATCHES = None
     cfg.BROKER_ID = "b1"
     return cfg
+
+@pytest.fixture
+def stream_writer():
+    return AsyncMock(spec=StreamWriter)
+
+@pytest.fixture
+def handler(base_config):
+    queue = Queue()
+    handler = Connection(Server(config=base_config, queue=queue))
+    return handler

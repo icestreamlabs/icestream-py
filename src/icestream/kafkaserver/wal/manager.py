@@ -166,7 +166,7 @@ class WALManager:
                 broker_id = getattr(self.config, "BROKER_ID", "unknown")
 
                 encoded, offsets = encode_kafka_wal_file_with_offsets(
-                    batch_to_flush, broker_id=broker_id
+                    batch_to_flush, broker_id
                 )
                 encode_ms = int((self.time_source() - t0) * 1000)
 
