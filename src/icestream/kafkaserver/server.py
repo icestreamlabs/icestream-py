@@ -40,7 +40,8 @@ from sqlalchemy.orm import selectinload
 
 from icestream.config import Config
 from icestream.kafkaserver.handler import api_compatibility, handle_kafka_request
-from icestream.kafkaserver.handlers import KafkaHandler, FetchRequestHeader, FetchRequest, FetchResponse
+from icestream.kafkaserver.handlers import KafkaHandler, FetchRequestHeader, FetchRequest, FetchResponse, \
+    DeleteTopicsRequestHeader, DeleteTopicsRequest, DeleteTopicsResponse
 from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
@@ -982,3 +983,21 @@ class Connection(KafkaHandler):
             responses=tuple(responses)
         )
         return resp
+
+    async def handle_delete_topics_request(
+            self,
+            header: DeleteTopicsRequestHeader,
+            req: DeleteTopicsRequest,
+            api_version: int,
+            callback: Callable[[DeleteTopicsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_topics_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DeleteTopicsRequest,
+            api_version: int,
+    ) -> DeleteTopicsResponse:
+        pass

@@ -10,12 +10,15 @@ from kio.schema.errors import ErrorCode
 from kio.serial import entity_reader, entity_writer
 from kio.static.constants import EntityType
 
-from icestream.kafkaserver.handlers import KafkaHandler
+from icestream.kafkaserver.handlers import KafkaHandler, DeleteTopicsRequestHeader, DeleteTopicsRequest, \
+    DeleteTopicsResponse
 from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
     ApiVersionsResponse,
 )
+from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequestHeader, CreateTopicsRequest, \
+    CreateTopicsResponse
 from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
@@ -39,6 +42,7 @@ FETCH_API_KEY = 1
 METADATA_API_KEY = 3
 API_VERSIONS_API_KEY = 18
 CREATE_TOPICS_API_KEY = 19
+DELETE_TOPICS_API_KEY = 20
 
 
 @dataclass
@@ -64,107 +68,128 @@ api_compatibility: dict[int, tuple[int, int]] = {
     METADATA_API_KEY: (0, 4),
     API_VERSIONS_API_KEY: (0, 4),
     CREATE_TOPICS_API_KEY: (0, 4),
+    DELETE_TOPICS_API_KEY: (0, 6)
 }
 
 
 async def handle_produce(
-    handler: KafkaHandler,
-    header: ProduceRequestHeader,
-    req: ProduceRequest,
-    api_version: int,
-    respond: Callable[[ProduceResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: ProduceRequestHeader,
+        req: ProduceRequest,
+        api_version: int,
+        respond: Callable[[ProduceResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_produce_request(header, req, api_version, respond)
 
 
 async def handle_metadata(
-    handler: KafkaHandler,
-    header: MetadataRequestHeader,
-    req: MetadataRequest,
-    api_version: int,
-    respond: Callable[[MetadataResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: MetadataRequestHeader,
+        req: MetadataRequest,
+        api_version: int,
+        respond: Callable[[MetadataResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_metadata_request(header, req, api_version, respond)
 
 
 async def handle_api_versions(
-    handler: KafkaHandler,
-    header: ApiVersionsRequestHeader,
-    req: ApiVersionsRequest,
-    api_version: int,
-    respond: Callable[[ApiVersionsResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: ApiVersionsRequestHeader,
+        req: ApiVersionsRequest,
+        api_version: int,
+        respond: Callable[[ApiVersionsResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_api_versions_request(header, req, api_version, respond)
 
 
 async def handle_create_topics(
-    handler: KafkaHandler,
-    header: CreateTopicsRequestHeader,
-    req: CreateTopicsRequest,
-    api_version: int,
-    respond: Callable[[CreateTopicsResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: CreateTopicsRequestHeader,
+        req: CreateTopicsRequest,
+        api_version: int,
+        respond: Callable[[CreateTopicsResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_create_topics_request(header, req, api_version, respond)
 
 
 async def handle_fetch(
-    handler: KafkaHandler,
-    header: FetchRequestHeader,
-    req: FetchRequest,
-    api_version: int,
-    respond: Callable[[FetchResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: FetchRequestHeader,
+        req: FetchRequest,
+        api_version: int,
+        respond: Callable[[FetchResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_fetch_request(header, req, api_version, respond)
 
 
+async def handle_delete_topics(
+        handler: KafkaHandler,
+        header: DeleteTopicsRequestHeader,
+        req: DeleteTopicsRequest,
+        api_version: int,
+        respond: Callable[[DeleteTopicsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_delete_topics_request(header, req, api_version, respond)
+
+
 def error_produce(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: ProduceRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ProduceRequest,
+        api_version: int,
 ) -> ProduceResponse:
     return handler.produce_request_error_response(code, msg, req, api_version)
 
 
 def error_metadata(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: MetadataRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: MetadataRequest,
+        api_version: int,
 ) -> MetadataResponse:
     return handler.metadata_request_error_response(code, msg, req, api_version)
 
 
 def error_api_versions(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: ApiVersionsRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ApiVersionsRequest,
+        api_version: int,
 ) -> ApiVersionsResponse:
     return handler.api_versions_request_error_response(code, msg, req, api_version)
 
 
 def error_create_topics(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: CreateTopicsRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: CreateTopicsRequest,
+        api_version: int,
 ) -> CreateTopicsResponse:
     return handler.create_topics_request_error_response(code, msg, req, api_version)
 
 
 def error_fetch(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: FetchRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: FetchRequest,
+        api_version: int,
 ) -> FetchResponse:
     return handler.fetch_request_error_response(code, msg, req, api_version)
+
+
+def error_delete_topics(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DeleteTopicsRequest,
+        api_version: int,
+) -> DeleteTopicsResponse:
+    return handler.delete_topics_request_error_response(code, msg, req, api_version)
 
 
 request_map: dict[int, RequestHandlerMeta] = {
@@ -188,11 +213,15 @@ request_map: dict[int, RequestHandlerMeta] = {
         handler_func=handle_fetch,
         error_response_func=error_fetch,
     ),
+    DELETE_TOPICS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_delete_topics,
+        error_response_func=error_delete_topics,
+    ),
 }
 
 
 async def handle_kafka_request(
-    api_key: int, buffer: bytes, handler: KafkaHandler, writer: StreamWriter
+        api_key: int, buffer: bytes, handler: KafkaHandler, writer: StreamWriter
 ):
     if api_key not in request_map or api_key not in api_compatibility:
         return

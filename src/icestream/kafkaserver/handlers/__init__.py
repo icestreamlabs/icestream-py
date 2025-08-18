@@ -4,6 +4,10 @@ from kio.schema.errors import ErrorCode
 
 from icestream.kafkaserver.handlers.api_versions import ApiVersionsRequestHeader, ApiVersionsRequest, \
     ApiVersionsResponse
+from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequest, CreateTopicsResponse, \
+    CreateTopicsRequestHeader
+from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequestHeader, DeleteTopicsRequest, \
+    DeleteTopicsResponse
 from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
@@ -110,4 +114,22 @@ class KafkaHandler(Protocol):
         req: FetchRequest,
         api_version: int,
     ) -> FetchResponse:
+        pass
+
+    async def handle_delete_topics_request(
+            self,
+            header: DeleteTopicsRequestHeader,
+            req: DeleteTopicsRequest,
+            api_version: int,
+            callback: Callable[[DeleteTopicsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_topics_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DeleteTopicsRequest,
+            api_version: int,
+    ) -> DeleteTopicsResponse:
         pass
