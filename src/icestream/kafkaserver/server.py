@@ -56,12 +56,6 @@ from icestream.kafkaserver.handlers.produce import (
     ProduceRequestHeader,
     ProduceResponse,
 )
-from icestream.kafkaserver.messages import (
-    CreatableTopicResult,
-    CreateTopicsRequest,
-    CreateTopicsRequestHeader,
-    CreateTopicsResponse,
-)
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic

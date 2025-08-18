@@ -2,6 +2,8 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from kio.schema.errors import ErrorCode
 
+from icestream.kafkaserver.handlers.api_versions import ApiVersionsRequestHeader, ApiVersionsRequest, \
+    ApiVersionsResponse
 from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
@@ -18,15 +20,6 @@ from icestream.kafkaserver.handlers.fetch import (
     FetchRequestHeader,
     FetchResponse,
 )
-from icestream.kafkaserver.messages import (
-    ApiVersionsRequest,
-    ApiVersionsRequestHeader,
-    ApiVersionsResponse,
-    CreateTopicsRequest,
-    CreateTopicsRequestHeader,
-    CreateTopicsResponse,
-)
-
 
 class KafkaHandler(Protocol):
     async def handle_produce_request(

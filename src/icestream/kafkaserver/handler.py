@@ -26,12 +26,6 @@ from icestream.kafkaserver.handlers.produce import (
     ProduceRequestHeader,
     ProduceResponse,
 )
-from icestream.kafkaserver.messages import (
-    CreateTopicsRequest,
-    CreateTopicsRequestHeader,
-    CreateTopicsResponse,
-)
-
 from icestream.kafkaserver.handlers.fetch import (
     FetchRequest,
     FetchRequestHeader,
