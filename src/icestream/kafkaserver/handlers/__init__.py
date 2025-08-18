@@ -12,6 +12,12 @@ from icestream.kafkaserver.handlers.produce import (
     ProduceRequestHeader,
     ProduceResponse,
 )
+
+from icestream.kafkaserver.handlers.fetch import (
+    FetchRequest,
+    FetchRequestHeader,
+    FetchResponse,
+)
 from icestream.kafkaserver.messages import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
@@ -93,4 +99,22 @@ class KafkaHandler(Protocol):
         req: CreateTopicsRequest,
         api_version: int,
     ) -> CreateTopicsResponse:
+        pass
+
+    async def handle_fetch_request(
+        self,
+        header: FetchRequestHeader,
+        req: FetchRequest,
+        api_version: int,
+        callback: Callable[[FetchResponse], Awaitable[None]],
+    ) -> FetchResponse:
+        pass
+
+    def fetch_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: FetchRequest,
+        api_version: int,
+    ) -> FetchResponse:
         pass

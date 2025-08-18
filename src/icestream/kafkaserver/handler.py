@@ -27,15 +27,21 @@ from icestream.kafkaserver.handlers.produce import (
     ProduceResponse,
 )
 from icestream.kafkaserver.messages import (
-    CreatableTopicResult,
     CreateTopicsRequest,
     CreateTopicsRequestHeader,
     CreateTopicsResponse,
 )
 
+from icestream.kafkaserver.handlers.fetch import (
+    FetchRequest,
+    FetchRequestHeader,
+    FetchResponse,
+)
+
 log = structlog.get_logger()
 
 PRODUCE_API_KEY = 0
+FETCH_API_KEY = 1
 METADATA_API_KEY = 3
 API_VERSIONS_API_KEY = 18
 CREATE_TOPICS_API_KEY = 19
@@ -60,6 +66,7 @@ class RequestHandlerMeta:
 
 api_compatibility: dict[int, tuple[int, int]] = {
     PRODUCE_API_KEY: (0, 8),
+    FETCH_API_KEY: (0, 11),
     METADATA_API_KEY: (0, 4),
     API_VERSIONS_API_KEY: (0, 4),
     CREATE_TOPICS_API_KEY: (0, 4),
@@ -106,6 +113,16 @@ async def handle_create_topics(
     await handler.handle_create_topics_request(header, req, api_version, respond)
 
 
+async def handle_fetch(
+    handler: KafkaHandler,
+    header: FetchRequestHeader,
+    req: FetchRequest,
+    api_version: int,
+    respond: Callable[[FetchResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_fetch_request(header, req, api_version, respond)
+
+
 def error_produce(
     handler: KafkaHandler,
     code: ErrorCode,
@@ -146,6 +163,16 @@ def error_create_topics(
     return handler.create_topics_request_error_response(code, msg, req, api_version)
 
 
+def error_fetch(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: FetchRequest,
+    api_version: int,
+) -> FetchResponse:
+    return handler.fetch_request_error_response(code, msg, req, api_version)
+
+
 request_map: dict[int, RequestHandlerMeta] = {
     PRODUCE_API_KEY: RequestHandlerMeta(
         handler_func=handle_produce,
@@ -162,6 +189,10 @@ request_map: dict[int, RequestHandlerMeta] = {
     CREATE_TOPICS_API_KEY: RequestHandlerMeta(
         handler_func=handle_create_topics,
         error_response_func=error_create_topics,
+    ),
+    FETCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_fetch,
+        error_response_func=error_fetch,
     ),
 }
 

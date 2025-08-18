@@ -5,7 +5,7 @@ import struct
 import uuid
 from asyncio import Future, StreamReader, StreamWriter
 from asyncio import Server as AsyncIOServer
-from typing import Any, Callable, List, Sequence
+from typing import Any, Callable, List, Sequence, Awaitable
 
 import kio.schema.api_versions.v0 as api_v0
 import kio.schema.api_versions.v1 as api_v1
@@ -40,7 +40,7 @@ from sqlalchemy.orm import selectinload
 
 from icestream.config import Config
 from icestream.kafkaserver.handler import api_compatibility, handle_kafka_request
-from icestream.kafkaserver.handlers import KafkaHandler
+from icestream.kafkaserver.handlers import KafkaHandler, FetchRequestHeader, FetchRequest, FetchResponse
 from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
@@ -952,3 +952,39 @@ class Connection(KafkaHandler):
             throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
             topics=tuple(results),
         )
+
+    async def handle_fetch_request(
+        self,
+        header: FetchRequestHeader,
+        req: FetchRequest,
+        api_version: int,
+        callback: Callable[[FetchResponse], Awaitable[None]],
+    ) -> FetchResponse:
+        pass
+
+    def fetch_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: FetchRequest,
+        api_version: int,
+    ) -> FetchResponse:
+        mod = load_payload_module(1, api_version, EntityType.response)
+        responses = []
+        for i, topic in enumerate(req.topics):
+            partition_data = []
+            for j, partition in enumerate(topic.partitions):
+                partition_fetch_data = mod.PartitionData(
+                    partition_index=partition.partition,
+                    error_code=error_code,
+                )
+                partition_data.append(partition_fetch_data)
+            fetchable_topic_response = mod.FetchableTopicResponse(
+                topic=topic.topic,
+                partitions=tuple(partition_data)
+            )
+            responses.append(fetchable_topic_response)
+        resp = mod.FetchResponse(
+            responses=tuple(responses)
+        )
+        return resp
