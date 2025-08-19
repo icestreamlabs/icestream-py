@@ -2,6 +2,12 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from kio.schema.errors import ErrorCode
 
+from icestream.kafkaserver.handlers.add_offsets_to_txn import AddOffsetsToTxnRequestHeader, AddOffsetsToTxnRequest, \
+    AddOffsetsToTxnResponse
+from icestream.kafkaserver.handlers.add_partitions_to_txn import AddPartitionsToTxnRequestHeader, \
+    AddPartitionsToTxnRequest, AddPartitionsToTxnResponse
+from icestream.kafkaserver.handlers.alter_client_quotas import AlterClientQuotasRequestHeader, AlterClientQuotasRequest, \
+    AlterClientQuotasResponse
 from icestream.kafkaserver.handlers.api_versions import ApiVersionsRequestHeader, ApiVersionsRequest, \
     ApiVersionsResponse
 from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequest, CreateTopicsResponse, \
@@ -132,4 +138,58 @@ class KafkaHandler(Protocol):
             req: DeleteTopicsRequest,
             api_version: int,
     ) -> DeleteTopicsResponse:
+        pass
+
+    async def handle_add_offsets_to_txn_request(
+            self,
+            header: AddOffsetsToTxnRequestHeader,
+            req: AddOffsetsToTxnRequest,
+            api_version: int,
+            callback: Callable[[AddOffsetsToTxnResponse], Awaitable[None]],
+    ):
+        pass
+
+    def add_offsets_to_txn_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AddOffsetsToTxnRequest,
+            api_version: int,
+    ) -> AddOffsetsToTxnResponse:
+        pass
+
+    async def handle_add_partitions_to_txn_request(
+            self,
+            header: AddPartitionsToTxnRequestHeader,
+            req: AddPartitionsToTxnRequest,
+            api_version: int,
+            callback: Callable[[AddPartitionsToTxnResponse], Awaitable[None]],
+    ):
+        pass
+
+    def add_partitions_to_txn_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AddPartitionsToTxnRequest,
+            api_version: int,
+    ) -> AddPartitionsToTxnResponse:
+        pass
+
+    async def handle_alter_client_quotas_request(
+            self,
+            header: AlterClientQuotasRequestHeader,
+            req: AlterClientQuotasRequest,
+            api_version: int,
+            callback: Callable[[AlterClientQuotasResponse], Awaitable[None]],
+    ):
+        pass
+
+    def alter_client_quotas_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AlterClientQuotasRequest,
+            api_version: int,
+    ) -> AlterClientQuotasResponse:
         pass

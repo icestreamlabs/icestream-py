@@ -43,6 +43,9 @@ METADATA_API_KEY = 3
 API_VERSIONS_API_KEY = 18
 CREATE_TOPICS_API_KEY = 19
 DELETE_TOPICS_API_KEY = 20
+ADD_OFFSETS_TO_TXN_API_KEY = 25
+ADD_PARTITIONS_TO_TXN_API_KEY = 24
+ALTER_CLIENT_QUOTAS_API_KEY = 49
 
 
 @dataclass
@@ -68,7 +71,10 @@ api_compatibility: dict[int, tuple[int, int]] = {
     METADATA_API_KEY: (0, 4),
     API_VERSIONS_API_KEY: (0, 4),
     CREATE_TOPICS_API_KEY: (0, 4),
-    DELETE_TOPICS_API_KEY: (0, 6)
+    DELETE_TOPICS_API_KEY: (0, 6),
+    ADD_OFFSETS_TO_TXN_API_KEY: (0, 4),
+    ADD_PARTITIONS_TO_TXN_API_KEY: (0, 5),
+    ALTER_CLIENT_QUOTAS_API_KEY: (0, 1),
 }
 
 
@@ -141,6 +147,37 @@ def error_produce(
 ) -> ProduceResponse:
     return handler.produce_request_error_response(code, msg, req, api_version)
 
+async def handle_add_offsets_to_txn(
+    handler: KafkaHandler,
+    header: AddOffsetsToTxnRequestHeader,
+    req: AddOffsetsToTxnRequest,
+    api_version: int,
+    respond: Callable[[AddOffsetsToTxnResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_add_offsets_to_txn_request(header, req, api_version, respond)
+
+
+async def handle_add_partitions_to_txn(
+    handler: KafkaHandler,
+    header: AddPartitionsToTxnRequestHeader,
+    req: AddPartitionsToTxnRequest,
+    api_version: int,
+    respond: Callable[[AddPartitionsToTxnResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_add_partitions_to_txn_request(
+        header, req, api_version, respond
+    )
+
+
+async def handle_alter_client_quotas(
+    handler: KafkaHandler,
+    header: AlterClientQuotasRequestHeader,
+    req: AlterClientQuotasRequest,
+    api_version: int,
+    respond: Callable[[AlterClientQuotasResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_client_quotas_request(header, req, api_version, respond)
+
 
 def error_metadata(
         handler: KafkaHandler,
@@ -191,6 +228,41 @@ def error_delete_topics(
 ) -> DeleteTopicsResponse:
     return handler.delete_topics_request_error_response(code, msg, req, api_version)
 
+def error_add_offsets_to_txn(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: AddOffsetsToTxnRequest,
+    api_version: int,
+) -> AddOffsetsToTxnResponse:
+    return handler.add_offsets_to_txn_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_add_partitions_to_txn(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: AddPartitionsToTxnRequest,
+    api_version: int,
+) -> AddPartitionsToTxnResponse:
+    return handler.add_partitions_to_txn_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_client_quotas(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: AlterClientQuotasRequest,
+    api_version: int,
+) -> AlterClientQuotasResponse:
+    return handler.alter_client_quotas_request_error_response(
+        code, msg, req, api_version
+    )
+
 
 request_map: dict[int, RequestHandlerMeta] = {
     PRODUCE_API_KEY: RequestHandlerMeta(
@@ -216,6 +288,18 @@ request_map: dict[int, RequestHandlerMeta] = {
     DELETE_TOPICS_API_KEY: RequestHandlerMeta(
         handler_func=handle_delete_topics,
         error_response_func=error_delete_topics,
+    ),
+    ADD_OFFSETS_TO_TXN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_add_offsets_to_txn,
+        error_response_func=error_add_offsets_to_txn,
+    ),
+    ADD_PARTITIONS_TO_TXN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_add_partitions_to_txn,
+        error_response_func=error_add_partitions_to_txn,
+    ),
+    ALTER_CLIENT_QUOTAS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_client_quotas,
+        error_response_func=error_alter_client_quotas,
     ),
 }
 

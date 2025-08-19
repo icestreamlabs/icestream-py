@@ -28,6 +28,14 @@ import kio.schema.produce.v5 as produce_v5
 import kio.schema.produce.v6 as produce_v6
 import kio.schema.produce.v7 as produce_v7
 import kio.schema.produce.v8 as produce_v8
+import kio.schema.create_topics.v0 as create_topics_v0
+import kio.schema.create_topics.v1 as create_topics_v1
+import kio.schema.create_topics.v2 as create_topics_v2
+import kio.schema.create_topics.v3 as create_topics_v3
+import kio.schema.create_topics.v4 as create_topics_v4
+import kio.schema.create_topics.v5 as create_topics_v5
+import kio.schema.create_topics.v6 as create_topics_v6
+import kio.schema.create_topics.v7 as create_topics_v7
 import structlog
 from kio.index import load_payload_module
 from kio.schema.errors import ErrorCode
@@ -40,8 +48,7 @@ from sqlalchemy.orm import selectinload
 
 from icestream.config import Config
 from icestream.kafkaserver.handler import api_compatibility, handle_kafka_request
-from icestream.kafkaserver.handlers import KafkaHandler, FetchRequestHeader, FetchRequest, FetchResponse, \
-    DeleteTopicsRequestHeader, DeleteTopicsRequest, DeleteTopicsResponse
+from icestream.kafkaserver.handlers import KafkaHandler
 from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
@@ -57,6 +64,17 @@ from icestream.kafkaserver.handlers.produce import (
     ProduceRequestHeader,
     ProduceResponse,
 )
+from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequest, CreateTopicsRequestHeader, \
+    CreateTopicsResponse
+from icestream.kafkaserver.handlers.fetch import FetchRequest, FetchRequestHeader, FetchResponse
+from icestream.kafkaserver.handlers.add_offsets_to_txn import AddOffsetsToTxnRequest, AddOffsetsToTxnRequestHeader, \
+    AddOffsetsToTxnResponse
+from icestream.kafkaserver.handlers.add_partitions_to_txn import AddPartitionsToTxnRequest, \
+    AddPartitionsToTxnRequestHeader, AddPartitionsToTxnResponse
+from icestream.kafkaserver.handlers.alter_client_quotas import AlterClientQuotasRequest, AlterClientQuotasRequestHeader, \
+    AlterClientQuotasResponse
+from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequest, DeleteTopicsRequestHeader, \
+    DeleteTopicsResponse
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic
@@ -520,7 +538,7 @@ class Connection(KafkaHandler):
         # node id would always be 0
         # rack would always be None
         broker = metadata_v6.response.MetadataResponseBroker(
-            node_id=i32(0), host="localhost", port=i32(9092), rack=None
+            node_id=BrokerId(0), host="localhost", port=i32(9092), rack=None
         )
 
         # we need to respect the topic list passed in by the request
@@ -532,9 +550,9 @@ class Connection(KafkaHandler):
                 metadata_v6.response.MetadataResponsePartition(
                     error_code=ErrorCode.none,
                     partition_index=i32(pidx.partition_number),
-                    leader_id=i32(0),
-                    replica_nodes=(i32(0),),
-                    isr_nodes=(i32(0),),
+                    leader_id=BrokerId(0),
+                    replica_nodes=(BrokerId(0),),
+                    isr_nodes=(BrokerId(0),),
                     offline_replicas=(),
                 )
                 for pidx in topic.partitions
@@ -552,7 +570,7 @@ class Connection(KafkaHandler):
             throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
             brokers=(broker,),
             cluster_id="test-cluster",
-            controller_id=i32(0),
+            controller_id=BrokerId(0),
             topics=tuple(topics),
         )
 
@@ -903,7 +921,7 @@ class Connection(KafkaHandler):
                 "create_topic", topic=topic.name, num_partitions=topic.num_partitions
             )
 
-            result = CreatableTopicResult(
+            result = create_topics_v7.response.CreatableTopicResult(
                 name=topic.name,
                 topic_id=uuid.uuid4(),
                 error_code=ErrorCode.none,
@@ -928,10 +946,11 @@ class Connection(KafkaHandler):
         req: CreateTopicsRequest,
         api_version: int,
     ) -> CreateTopicsResponse:
+        mod = load_payload_module(0, api_version, EntityType.response)
         results = []
 
         for topic in req.topics:
-            result = CreatableTopicResult(
+            result = mod.CreatableTopicResult(
                 name=topic.name,
                 topic_id=None,
                 error_code=error_code,
@@ -943,7 +962,7 @@ class Connection(KafkaHandler):
             )
             results.append(result)
 
-        return CreateTopicsResponse(
+        return mod.CreateTopicsResponse(
             throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
             topics=tuple(results),
         )
@@ -1000,4 +1019,58 @@ class Connection(KafkaHandler):
             req: DeleteTopicsRequest,
             api_version: int,
     ) -> DeleteTopicsResponse:
+        pass
+
+    async def handle_add_offsets_to_txn_request(
+            self,
+            header: AddOffsetsToTxnRequestHeader,
+            req: AddOffsetsToTxnRequest,
+            api_version: int,
+            callback: Callable[[AddOffsetsToTxnResponse], Awaitable[None]],
+    ):
+        pass
+
+    def add_offsets_to_txn_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AddOffsetsToTxnRequest,
+            api_version: int,
+    ) -> AddOffsetsToTxnResponse:
+        pass
+
+    async def handle_add_partitions_to_txn_request(
+            self,
+            header: AddPartitionsToTxnRequestHeader,
+            req: AddPartitionsToTxnRequest,
+            api_version: int,
+            callback: Callable[[AddPartitionsToTxnResponse], Awaitable[None]],
+    ):
+        pass
+
+    def add_partitions_to_txn_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AddPartitionsToTxnRequest,
+            api_version: int,
+    ) -> AddPartitionsToTxnResponse:
+        pass
+
+    async def handle_alter_client_quotas_request(
+            self,
+            header: AlterClientQuotasRequestHeader,
+            req: AlterClientQuotasRequest,
+            api_version: int,
+            callback: Callable[[AlterClientQuotasResponse], Awaitable[None]],
+    ):
+        pass
+
+    def alter_client_quotas_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AlterClientQuotasRequest,
+            api_version: int,
+    ) -> AlterClientQuotasResponse:
         pass
