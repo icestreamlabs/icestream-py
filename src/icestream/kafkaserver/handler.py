@@ -10,8 +10,7 @@ from kio.schema.errors import ErrorCode
 from kio.serial import entity_reader, entity_writer
 from kio.static.constants import EntityType
 
-from icestream.kafkaserver.handlers import KafkaHandler, DeleteTopicsRequestHeader, DeleteTopicsRequest, \
-    DeleteTopicsResponse
+from icestream.kafkaserver.handlers import KafkaHandler
 from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
@@ -34,6 +33,21 @@ from icestream.kafkaserver.handlers.fetch import (
     FetchRequestHeader,
     FetchResponse,
 )
+from icestream.kafkaserver.handlers.delete_topics import (
+    DeleteTopicsRequest, DeleteTopicsRequestHeader, DeleteTopicsResponse
+)
+from icestream.kafkaserver.handlers.add_offsets_to_txn import (
+    AddOffsetsToTxnRequest, AddOffsetsToTxnRequestHeader, AddOffsetsToTxnResponse
+)
+from icestream.kafkaserver.handlers.add_partitions_to_txn import (
+    AddPartitionsToTxnRequest, AddPartitionsToTxnRequestHeader, AddPartitionsToTxnResponse
+)
+from icestream.kafkaserver.handlers.alter_client_quotas import (
+    AlterClientQuotasRequest, AlterClientQuotasRequestHeader, AlterClientQuotasResponse
+)
+from icestream.kafkaserver.handlers.add_raft_voter import (
+    AddRaftVoterRequest, AddRaftVoterRequestHeader, AddRaftVoterResponse
+)
 
 log = structlog.get_logger()
 
@@ -46,6 +60,7 @@ DELETE_TOPICS_API_KEY = 20
 ADD_OFFSETS_TO_TXN_API_KEY = 25
 ADD_PARTITIONS_TO_TXN_API_KEY = 24
 ALTER_CLIENT_QUOTAS_API_KEY = 49
+ADD_RAFT_VOTER_API_KEY = 80
 
 
 @dataclass
@@ -177,6 +192,15 @@ async def handle_alter_client_quotas(
     respond: Callable[[AlterClientQuotasResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_alter_client_quotas_request(header, req, api_version, respond)
+    
+async def handle_add_raft_voter(
+        handler: KafkaHandler,
+        header: AddRaftVoterRequestHeader,
+        req: AddRaftVoterRequest,
+        api_version: int,
+        respond: Callable[[AddRaftVoterResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_add_raft_voter_request(header, req, api_version, respond)
 
 
 def error_metadata(

@@ -6,6 +6,8 @@ from icestream.kafkaserver.handlers.add_offsets_to_txn import AddOffsetsToTxnReq
     AddOffsetsToTxnResponse
 from icestream.kafkaserver.handlers.add_partitions_to_txn import AddPartitionsToTxnRequestHeader, \
     AddPartitionsToTxnRequest, AddPartitionsToTxnResponse
+from icestream.kafkaserver.handlers.add_raft_voter import AddRaftVoterRequestHeader, AddRaftVoterRequest, \
+    AddRaftVoterResponse
 from icestream.kafkaserver.handlers.alter_client_quotas import AlterClientQuotasRequestHeader, AlterClientQuotasRequest, \
     AlterClientQuotasResponse
 from icestream.kafkaserver.handlers.api_versions import ApiVersionsRequestHeader, ApiVersionsRequest, \
@@ -192,4 +194,22 @@ class KafkaHandler(Protocol):
             req: AlterClientQuotasRequest,
             api_version: int,
     ) -> AlterClientQuotasResponse:
+        pass
+
+    async def handle_add_raft_voter_request(
+            self,
+            header: AddRaftVoterRequestHeader,
+            req: AddRaftVoterRequest,
+            api_version: int,
+            callback: Callable[[AddRaftVoterResponse], Awaitable[None]],
+    ):
+        pass
+
+    def add_raft_voter_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AddRaftVoterRequest,
+            api_version: int,
+    ) -> AddRaftVoterResponse:
         pass

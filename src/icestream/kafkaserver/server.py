@@ -75,6 +75,8 @@ from icestream.kafkaserver.handlers.alter_client_quotas import AlterClientQuotas
     AlterClientQuotasResponse
 from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequest, DeleteTopicsRequestHeader, \
     DeleteTopicsResponse
+from icestream.kafkaserver.handlers.add_raft_voter import AddRaftVoterRequest, AddRaftVoterRequestHeader, \
+    AddRaftVoterResponse
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic
@@ -1073,4 +1075,22 @@ class Connection(KafkaHandler):
             req: AlterClientQuotasRequest,
             api_version: int,
     ) -> AlterClientQuotasResponse:
+        pass
+
+    async def handle_add_raft_voter_request(
+            self,
+            header: AddRaftVoterRequestHeader,
+            req: AddRaftVoterRequest,
+            api_version: int,
+            callback: Callable[[AddRaftVoterResponse], Awaitable[None]],
+    ):
+        pass
+
+    def add_raft_voter_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AddRaftVoterRequest,
+            api_version: int,
+    ) -> AddRaftVoterResponse:
         pass
