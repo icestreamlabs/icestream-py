@@ -48,6 +48,9 @@ from icestream.kafkaserver.handlers.alter_client_quotas import (
 from icestream.kafkaserver.handlers.add_raft_voter import (
     AddRaftVoterRequest, AddRaftVoterRequestHeader, AddRaftVoterResponse
 )
+from icestream.kafkaserver.handlers.allocate_producer_ids import (
+    AllocateProducerIdsRequest, AllocateProducerIdsRequestHeader, AllocateProducerIdsResponse
+)
 
 log = structlog.get_logger()
 
@@ -57,9 +60,10 @@ METADATA_API_KEY = 3
 API_VERSIONS_API_KEY = 18
 CREATE_TOPICS_API_KEY = 19
 DELETE_TOPICS_API_KEY = 20
-ADD_OFFSETS_TO_TXN_API_KEY = 25
 ADD_PARTITIONS_TO_TXN_API_KEY = 24
+ADD_OFFSETS_TO_TXN_API_KEY = 25
 ALTER_CLIENT_QUOTAS_API_KEY = 49
+ALLOCATE_PRODUCER_IDS_API_KEY = 67
 ADD_RAFT_VOTER_API_KEY = 80
 
 
@@ -90,6 +94,8 @@ api_compatibility: dict[int, tuple[int, int]] = {
     ADD_OFFSETS_TO_TXN_API_KEY: (0, 4),
     ADD_PARTITIONS_TO_TXN_API_KEY: (0, 5),
     ALTER_CLIENT_QUOTAS_API_KEY: (0, 1),
+    ADD_RAFT_VOTER_API_KEY: (0, 0),
+    ALLOCATE_PRODUCER_IDS_API_KEY: (0, 0),
 }
 
 
@@ -162,22 +168,23 @@ def error_produce(
 ) -> ProduceResponse:
     return handler.produce_request_error_response(code, msg, req, api_version)
 
+
 async def handle_add_offsets_to_txn(
-    handler: KafkaHandler,
-    header: AddOffsetsToTxnRequestHeader,
-    req: AddOffsetsToTxnRequest,
-    api_version: int,
-    respond: Callable[[AddOffsetsToTxnResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: AddOffsetsToTxnRequestHeader,
+        req: AddOffsetsToTxnRequest,
+        api_version: int,
+        respond: Callable[[AddOffsetsToTxnResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_add_offsets_to_txn_request(header, req, api_version, respond)
 
 
 async def handle_add_partitions_to_txn(
-    handler: KafkaHandler,
-    header: AddPartitionsToTxnRequestHeader,
-    req: AddPartitionsToTxnRequest,
-    api_version: int,
-    respond: Callable[[AddPartitionsToTxnResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: AddPartitionsToTxnRequestHeader,
+        req: AddPartitionsToTxnRequest,
+        api_version: int,
+        respond: Callable[[AddPartitionsToTxnResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_add_partitions_to_txn_request(
         header, req, api_version, respond
@@ -185,14 +192,15 @@ async def handle_add_partitions_to_txn(
 
 
 async def handle_alter_client_quotas(
-    handler: KafkaHandler,
-    header: AlterClientQuotasRequestHeader,
-    req: AlterClientQuotasRequest,
-    api_version: int,
-    respond: Callable[[AlterClientQuotasResponse], Awaitable[None]],
+        handler: KafkaHandler,
+        header: AlterClientQuotasRequestHeader,
+        req: AlterClientQuotasRequest,
+        api_version: int,
+        respond: Callable[[AlterClientQuotasResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_alter_client_quotas_request(header, req, api_version, respond)
-    
+
+
 async def handle_add_raft_voter(
         handler: KafkaHandler,
         header: AddRaftVoterRequestHeader,
@@ -252,12 +260,13 @@ def error_delete_topics(
 ) -> DeleteTopicsResponse:
     return handler.delete_topics_request_error_response(code, msg, req, api_version)
 
+
 def error_add_offsets_to_txn(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: AddOffsetsToTxnRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AddOffsetsToTxnRequest,
+        api_version: int,
 ) -> AddOffsetsToTxnResponse:
     return handler.add_offsets_to_txn_request_error_response(
         code, msg, req, api_version
@@ -265,11 +274,11 @@ def error_add_offsets_to_txn(
 
 
 def error_add_partitions_to_txn(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: AddPartitionsToTxnRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AddPartitionsToTxnRequest,
+        api_version: int,
 ) -> AddPartitionsToTxnResponse:
     return handler.add_partitions_to_txn_request_error_response(
         code, msg, req, api_version
@@ -277,13 +286,25 @@ def error_add_partitions_to_txn(
 
 
 def error_alter_client_quotas(
-    handler: KafkaHandler,
-    code: ErrorCode,
-    msg: str,
-    req: AlterClientQuotasRequest,
-    api_version: int,
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterClientQuotasRequest,
+        api_version: int,
 ) -> AlterClientQuotasResponse:
     return handler.alter_client_quotas_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_add_raft_voter(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AddRaftVoterRequest,
+        api_version: int,
+) -> AddRaftVoterResponse:
+    return handler.add_raft_voter_request_error_response(
         code, msg, req, api_version
     )
 
@@ -325,6 +346,10 @@ request_map: dict[int, RequestHandlerMeta] = {
         handler_func=handle_alter_client_quotas,
         error_response_func=error_alter_client_quotas,
     ),
+    ADD_RAFT_VOTER_API_KEY: RequestHandlerMeta(
+        handler_func=handle_add_raft_voter,
+        error_response_func=error_add_raft_voter,
+    )
 }
 
 

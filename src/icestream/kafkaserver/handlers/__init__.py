@@ -32,6 +32,8 @@ from icestream.kafkaserver.handlers.fetch import (
     FetchRequestHeader,
     FetchResponse,
 )
+from icestream.kafkaserver.handlers.allocate_producer_ids import AllocateProducerIdsRequestHeader, \
+    AllocateProducerIdsRequest, AllocateProducerIdsResponse
 
 class KafkaHandler(Protocol):
     async def handle_produce_request(
@@ -212,4 +214,22 @@ class KafkaHandler(Protocol):
             req: AddRaftVoterRequest,
             api_version: int,
     ) -> AddRaftVoterResponse:
+        pass
+
+    async def handle_allocate_producer_ids_request(
+            self,
+            header: AllocateProducerIdsRequestHeader,
+            req: AllocateProducerIdsRequest,
+            api_version: int,
+            callback: Callable[[AllocateProducerIdsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def allocate_producer_ids_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AllocateProducerIdsRequest,
+            api_version: int,
+    ) -> AllocateProducerIdsResponse:
         pass

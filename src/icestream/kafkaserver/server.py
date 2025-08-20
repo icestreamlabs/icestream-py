@@ -77,6 +77,8 @@ from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequest, De
     DeleteTopicsResponse
 from icestream.kafkaserver.handlers.add_raft_voter import AddRaftVoterRequest, AddRaftVoterRequestHeader, \
     AddRaftVoterResponse
+from icestream.kafkaserver.handlers.allocate_producer_ids import AllocateProducerIdsRequest, \
+    AllocateProducerIdsRequestHeader, AllocateProducerIdsResponse
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic
@@ -1093,4 +1095,22 @@ class Connection(KafkaHandler):
             req: AddRaftVoterRequest,
             api_version: int,
     ) -> AddRaftVoterResponse:
+        pass
+
+    async def handle_allocate_producer_ids_request(
+            self,
+            header: AllocateProducerIdsRequestHeader,
+            req: AllocateProducerIdsRequest,
+            api_version: int,
+            callback: Callable[[AllocateProducerIdsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def allocate_producer_ids_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AllocateProducerIdsRequest,
+            api_version: int,
+    ) -> AllocateProducerIdsResponse:
         pass
