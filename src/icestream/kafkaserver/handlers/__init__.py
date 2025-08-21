@@ -35,6 +35,72 @@ from icestream.kafkaserver.handlers.fetch import (
 from icestream.kafkaserver.handlers.allocate_producer_ids import AllocateProducerIdsRequestHeader, \
     AllocateProducerIdsRequest, AllocateProducerIdsResponse
 
+from icestream.kafkaserver.handlers.alter_configs import (
+    AlterConfigsRequest,
+    AlterConfigsRequestHeader,
+    AlterConfigsResponse,
+)
+from icestream.kafkaserver.handlers.alter_partition import (
+    AlterPartitionRequest,
+    AlterPartitionRequestHeader,
+    AlterPartitionResponse,
+)
+from icestream.kafkaserver.handlers.alter_partition_reassignments import (
+    AlterPartitionReassignmentsRequest,
+    AlterPartitionReassignmentsRequestHeader,
+    AlterPartitionReassignmentsResponse,
+)
+from icestream.kafkaserver.handlers.alter_replica_log_dirs import (
+    AlterReplicaLogDirsRequest,
+    AlterReplicaLogDirsRequestHeader,
+    AlterReplicaLogDirsResponse,
+)
+from icestream.kafkaserver.handlers.alter_user_scram_credentials import (
+    AlterUserScramCredentialsRequest,
+    AlterUserScramCredentialsRequestHeader,
+    AlterUserScramCredentialsResponse,
+)
+from icestream.kafkaserver.handlers.assign_replicas_to_dirs import (
+    AssignReplicasToDirsRequest,
+    AssignReplicasToDirsRequestHeader,
+    AssignReplicasToDirsResponse,
+)
+from icestream.kafkaserver.handlers.begin_quorum_epoch import (
+    BeginQuorumEpochRequest,
+    BeginQuorumEpochRequestHeader,
+    BeginQuorumEpochResponse,
+)
+from icestream.kafkaserver.handlers.broker_heartbeat import (
+    BrokerHeartbeatRequest,
+    BrokerHeartbeatRequestHeader,
+    BrokerHeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.broker_registration import (
+    BrokerRegistrationRequest,
+    BrokerRegistrationRequestHeader,
+    BrokerRegistrationResponse,
+)
+from icestream.kafkaserver.handlers.consumer_group_describe import (
+    ConsumerGroupDescribeRequest,
+    ConsumerGroupDescribeRequestHeader,
+    ConsumerGroupDescribeResponse,
+)
+from icestream.kafkaserver.handlers.consumer_group_heartbeat import (
+    ConsumerGroupHeartbeatRequest,
+    ConsumerGroupHeartbeatRequestHeader,
+    ConsumerGroupHeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.controlled_shutdown import (
+    ControlledShutdownRequest,
+    ControlledShutdownRequestHeader,
+    ControlledShutdownResponse,
+)
+from icestream.kafkaserver.handlers.controller_registration import (
+    ControllerRegistrationRequest,
+    ControllerRegistrationRequestHeader,
+    ControllerRegistrationResponse,
+)
+
 class KafkaHandler(Protocol):
     async def handle_produce_request(
         self,
@@ -232,4 +298,238 @@ class KafkaHandler(Protocol):
             req: AllocateProducerIdsRequest,
             api_version: int,
     ) -> AllocateProducerIdsResponse:
+        pass
+
+    async def handle_alter_configs_request(
+            self,
+            header: AlterConfigsRequestHeader,
+            req: AlterConfigsRequest,
+            api_version: int,
+            callback: Callable[[AlterConfigsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def alter_configs_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AlterConfigsRequest,
+            api_version: int,
+    ) -> AlterConfigsResponse:
+        pass
+
+    async def handle_alter_partition_request(
+            self,
+            header: AlterPartitionRequestHeader,
+            req: AlterPartitionRequest,
+            api_version: int,
+            callback: Callable[[AlterPartitionResponse], Awaitable[None]],
+    ):
+        pass
+
+    def alter_partition_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AlterPartitionRequest,
+            api_version: int,
+    ) -> AlterPartitionResponse:
+        pass
+
+    async def handle_alter_partition_reassignments_request(
+            self,
+            header: AlterPartitionReassignmentsRequestHeader,
+            req: AlterPartitionReassignmentsRequest,
+            api_version: int,
+            callback: Callable[[AlterPartitionReassignmentsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def alter_partition_reassignments_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AlterPartitionReassignmentsRequest,
+            api_version: int,
+    ) -> AlterPartitionReassignmentsResponse:
+        pass
+
+    async def handle_alter_replica_log_dirs_request(
+            self,
+            header: AlterReplicaLogDirsRequestHeader,
+            req: AlterReplicaLogDirsRequest,
+            api_version: int,
+            callback: Callable[[AlterReplicaLogDirsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def alter_replica_log_dirs_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AlterReplicaLogDirsRequest,
+            api_version: int,
+    ) -> AlterReplicaLogDirsResponse:
+        pass
+
+    async def handle_alter_user_scram_credentials_request(
+            self,
+            header: AlterUserScramCredentialsRequestHeader,
+            req: AlterUserScramCredentialsRequest,
+            api_version: int,
+            callback: Callable[[AlterUserScramCredentialsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def alter_user_scram_credentials_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AlterUserScramCredentialsRequest,
+            api_version: int,
+    ) -> AlterUserScramCredentialsResponse:
+        pass
+
+    async def handle_assign_replicas_to_dirs_request(
+            self,
+            header: AssignReplicasToDirsRequestHeader,
+            req: AssignReplicasToDirsRequest,
+            api_version: int,
+            callback: Callable[[AssignReplicasToDirsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def assign_replicas_to_dirs_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: AssignReplicasToDirsRequest,
+            api_version: int,
+    ) -> AssignReplicasToDirsResponse:
+        pass
+
+    async def handle_begin_quorum_epoch_request(
+            self,
+            header: BeginQuorumEpochRequestHeader,
+            req: BeginQuorumEpochRequest,
+            api_version: int,
+            callback: Callable[[BeginQuorumEpochResponse], Awaitable[None]],
+    ):
+        pass
+
+    def begin_quorum_epoch_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: BeginQuorumEpochRequest,
+            api_version: int,
+    ) -> BeginQuorumEpochResponse:
+        pass
+
+    async def handle_broker_heartbeat_request(
+            self,
+            header: BrokerHeartbeatRequestHeader,
+            req: BrokerHeartbeatRequest,
+            api_version: int,
+            callback: Callable[[BrokerHeartbeatResponse], Awaitable[None]],
+    ):
+        pass
+
+    def broker_heartbeat_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: BrokerHeartbeatRequest,
+            api_version: int,
+    ) -> BrokerHeartbeatResponse:
+        pass
+
+    async def handle_broker_registration_request(
+            self,
+            header: BrokerRegistrationRequestHeader,
+            req: BrokerRegistrationRequest,
+            api_version: int,
+            callback: Callable[[BrokerRegistrationResponse], Awaitable[None]],
+    ):
+        pass
+
+    def broker_registration_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: BrokerRegistrationRequest,
+            api_version: int,
+    ) -> BrokerRegistrationResponse:
+        pass
+
+    async def handle_consumer_group_describe_request(
+            self,
+            header: ConsumerGroupDescribeRequestHeader,
+            req: ConsumerGroupDescribeRequest,
+            api_version: int,
+            callback: Callable[[ConsumerGroupDescribeResponse], Awaitable[None]],
+    ):
+        pass
+
+    def consumer_group_describe_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: ConsumerGroupDescribeRequest,
+            api_version: int,
+    ) -> ConsumerGroupDescribeResponse:
+        pass
+
+    async def handle_consumer_group_heartbeat_request(
+            self,
+            header: ConsumerGroupHeartbeatRequestHeader,
+            req: ConsumerGroupHeartbeatRequest,
+            api_version: int,
+            callback: Callable[[ConsumerGroupHeartbeatResponse], Awaitable[None]],
+    ):
+        pass
+
+    def consumer_group_heartbeat_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: ConsumerGroupHeartbeatRequest,
+            api_version: int,
+    ) -> ConsumerGroupHeartbeatResponse:
+        pass
+
+    async def handle_controlled_shutdown_request(
+            self,
+            header: ControlledShutdownRequestHeader,
+            req: ControlledShutdownRequest,
+            api_version: int,
+            callback: Callable[[ControlledShutdownResponse], Awaitable[None]],
+    ):
+        pass
+
+    def controlled_shutdown_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: ControlledShutdownRequest,
+            api_version: int,
+    ) -> ControlledShutdownResponse:
+        pass
+
+    async def handle_controller_registration_request(
+            self,
+            header: ControllerRegistrationRequestHeader,
+            req: ControllerRegistrationRequest,
+            api_version: int,
+            callback: Callable[[ControllerRegistrationResponse], Awaitable[None]],
+    ):
+        pass
+
+    def controller_registration_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: ControllerRegistrationRequest,
+            api_version: int,
+    ) -> ControllerRegistrationResponse:
         pass

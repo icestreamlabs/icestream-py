@@ -45,6 +45,71 @@ from icestream.kafkaserver.handlers.add_partitions_to_txn import (
 from icestream.kafkaserver.handlers.alter_client_quotas import (
     AlterClientQuotasRequest, AlterClientQuotasRequestHeader, AlterClientQuotasResponse
 )
+from icestream.kafkaserver.handlers.alter_configs import (
+    AlterConfigsRequest,
+    AlterConfigsRequestHeader,
+    AlterConfigsResponse,
+)
+from icestream.kafkaserver.handlers.alter_partition import (
+    AlterPartitionRequest,
+    AlterPartitionRequestHeader,
+    AlterPartitionResponse,
+)
+from icestream.kafkaserver.handlers.alter_partition_reassignments import (
+    AlterPartitionReassignmentsRequest,
+    AlterPartitionReassignmentsRequestHeader,
+    AlterPartitionReassignmentsResponse,
+)
+from icestream.kafkaserver.handlers.alter_replica_log_dirs import (
+    AlterReplicaLogDirsRequest,
+    AlterReplicaLogDirsRequestHeader,
+    AlterReplicaLogDirsResponse,
+)
+from icestream.kafkaserver.handlers.alter_user_scram_credentials import (
+    AlterUserScramCredentialsRequest,
+    AlterUserScramCredentialsRequestHeader,
+    AlterUserScramCredentialsResponse,
+)
+from icestream.kafkaserver.handlers.assign_replicas_to_dirs import (
+    AssignReplicasToDirsRequest,
+    AssignReplicasToDirsRequestHeader,
+    AssignReplicasToDirsResponse,
+)
+from icestream.kafkaserver.handlers.begin_quorum_epoch import (
+    BeginQuorumEpochRequest,
+    BeginQuorumEpochRequestHeader,
+    BeginQuorumEpochResponse,
+)
+from icestream.kafkaserver.handlers.broker_heartbeat import (
+    BrokerHeartbeatRequest,
+    BrokerHeartbeatRequestHeader,
+    BrokerHeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.broker_registration import (
+    BrokerRegistrationRequest,
+    BrokerRegistrationRequestHeader,
+    BrokerRegistrationResponse,
+)
+from icestream.kafkaserver.handlers.consumer_group_describe import (
+    ConsumerGroupDescribeRequest,
+    ConsumerGroupDescribeRequestHeader,
+    ConsumerGroupDescribeResponse,
+)
+from icestream.kafkaserver.handlers.consumer_group_heartbeat import (
+    ConsumerGroupHeartbeatRequest,
+    ConsumerGroupHeartbeatRequestHeader,
+    ConsumerGroupHeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.controlled_shutdown import (
+    ControlledShutdownRequest,
+    ControlledShutdownRequestHeader,
+    ControlledShutdownResponse,
+)
+from icestream.kafkaserver.handlers.controller_registration import (
+    ControllerRegistrationRequest,
+    ControllerRegistrationRequestHeader,
+    ControllerRegistrationResponse,
+)
 from icestream.kafkaserver.handlers.add_raft_voter import (
     AddRaftVoterRequest, AddRaftVoterRequestHeader, AddRaftVoterResponse
 )
@@ -57,12 +122,25 @@ log = structlog.get_logger()
 PRODUCE_API_KEY = 0
 FETCH_API_KEY = 1
 METADATA_API_KEY = 3
+CONTROLLED_SHUTDOWN_API_KEY = 7
 API_VERSIONS_API_KEY = 18
 CREATE_TOPICS_API_KEY = 19
 DELETE_TOPICS_API_KEY = 20
 ADD_PARTITIONS_TO_TXN_API_KEY = 24
 ADD_OFFSETS_TO_TXN_API_KEY = 25
+ALTER_CONFIGS_API_KEY = 33
+ALTER_REPLICA_LOG_DIRS_API_KEY = 34
+ALTER_USER_SCRAM_CREDENTIALS_API_KEY = 51
+BEGIN_QUORUM_EPOCH_API_KEY = 53
+BROKER_HEARTBEAT_API_KEY = 63
+BROKER_REGISTRATION_API_KEY = 62
+CONSUMER_GROUP_DESCRIBE_API_KEY = 69
+CONSUMER_GROUP_HEARTBEAT_API_KEY = 68
 ALTER_CLIENT_QUOTAS_API_KEY = 49
+ALTER_PARTITION_REASSIGNMENTS_API_KEY = 45
+ALTER_PARTITION_API_KEY = 56
+ASSIGN_REPLICAS_TO_DIRS_API_KEY = 73
+CONTROLLER_REGISTRATION_API_KEY = 70
 ALLOCATE_PRODUCER_IDS_API_KEY = 67
 ADD_RAFT_VOTER_API_KEY = 80
 
@@ -88,12 +166,25 @@ api_compatibility: dict[int, tuple[int, int]] = {
     PRODUCE_API_KEY: (0, 8),
     FETCH_API_KEY: (0, 11),
     METADATA_API_KEY: (0, 4),
+    CONTROLLED_SHUTDOWN_API_KEY: (0, 3),
     API_VERSIONS_API_KEY: (0, 4),
     CREATE_TOPICS_API_KEY: (0, 4),
     DELETE_TOPICS_API_KEY: (0, 6),
     ADD_OFFSETS_TO_TXN_API_KEY: (0, 4),
     ADD_PARTITIONS_TO_TXN_API_KEY: (0, 5),
     ALTER_CLIENT_QUOTAS_API_KEY: (0, 1),
+    ALTER_CONFIGS_API_KEY: (0, 2),
+    ALTER_PARTITION_API_KEY: (0, 3),
+    ALTER_PARTITION_REASSIGNMENTS_API_KEY: (0, 0),
+    ALTER_REPLICA_LOG_DIRS_API_KEY: (0, 2),
+    ALTER_USER_SCRAM_CREDENTIALS_API_KEY: (0, 0),
+    ASSIGN_REPLICAS_TO_DIRS_API_KEY: (0, 0),
+    BEGIN_QUORUM_EPOCH_API_KEY: (0, 1),
+    BROKER_HEARTBEAT_API_KEY: (0, 1),
+    BROKER_REGISTRATION_API_KEY: (0, 4),
+    CONSUMER_GROUP_DESCRIBE_API_KEY: (0, 0),
+    CONSUMER_GROUP_HEARTBEAT_API_KEY: (0, 0),
+    CONTROLLER_REGISTRATION_API_KEY: (0, 0),
     ADD_RAFT_VOTER_API_KEY: (0, 0),
     ALLOCATE_PRODUCER_IDS_API_KEY: (0, 0),
 }
@@ -159,6 +250,16 @@ async def handle_delete_topics(
     await handler.handle_delete_topics_request(header, req, api_version, respond)
 
 
+async def handle_controlled_shutdown(
+        handler: KafkaHandler,
+        header: ControlledShutdownRequestHeader,
+        req: ControlledShutdownRequest,
+        api_version: int,
+        respond: Callable[[ControlledShutdownResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_controlled_shutdown_request(header, req, api_version, respond)
+
+
 def error_produce(
         handler: KafkaHandler,
         code: ErrorCode,
@@ -199,6 +300,126 @@ async def handle_alter_client_quotas(
         respond: Callable[[AlterClientQuotasResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_alter_client_quotas_request(header, req, api_version, respond)
+
+
+async def handle_alter_configs(
+        handler: KafkaHandler,
+        header: AlterConfigsRequestHeader,
+        req: AlterConfigsRequest,
+        api_version: int,
+        respond: Callable[[AlterConfigsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_configs_request(header, req, api_version, respond)
+
+
+async def handle_alter_partition(
+        handler: KafkaHandler,
+        header: AlterPartitionRequestHeader,
+        req: AlterPartitionRequest,
+        api_version: int,
+        respond: Callable[[AlterPartitionResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_partition_request(header, req, api_version, respond)
+
+
+async def handle_alter_partition_reassignments(
+        handler: KafkaHandler,
+        header: AlterPartitionReassignmentsRequestHeader,
+        req: AlterPartitionReassignmentsRequest,
+        api_version: int,
+        respond: Callable[[AlterPartitionReassignmentsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_partition_reassignments_request(header, req, api_version, respond)
+
+
+async def handle_alter_replica_log_dirs(
+        handler: KafkaHandler,
+        header: AlterReplicaLogDirsRequestHeader,
+        req: AlterReplicaLogDirsRequest,
+        api_version: int,
+        respond: Callable[[AlterReplicaLogDirsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_replica_log_dirs_request(header, req, api_version, respond)
+
+
+async def handle_alter_user_scram_credentials(
+        handler: KafkaHandler,
+        header: AlterUserScramCredentialsRequestHeader,
+        req: AlterUserScramCredentialsRequest,
+        api_version: int,
+        respond: Callable[[AlterUserScramCredentialsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_user_scram_credentials_request(header, req, api_version, respond)
+
+
+async def handle_assign_replicas_to_dirs(
+        handler: KafkaHandler,
+        header: AssignReplicasToDirsRequestHeader,
+        req: AssignReplicasToDirsRequest,
+        api_version: int,
+        respond: Callable[[AssignReplicasToDirsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_assign_replicas_to_dirs_request(header, req, api_version, respond)
+
+
+async def handle_begin_quorum_epoch(
+        handler: KafkaHandler,
+        header: BeginQuorumEpochRequestHeader,
+        req: BeginQuorumEpochRequest,
+        api_version: int,
+        respond: Callable[[BeginQuorumEpochResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_begin_quorum_epoch_request(header, req, api_version, respond)
+
+
+async def handle_broker_heartbeat(
+        handler: KafkaHandler,
+        header: BrokerHeartbeatRequestHeader,
+        req: BrokerHeartbeatRequest,
+        api_version: int,
+        respond: Callable[[BrokerHeartbeatResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_broker_heartbeat_request(header, req, api_version, respond)
+
+
+async def handle_broker_registration(
+        handler: KafkaHandler,
+        header: BrokerRegistrationRequestHeader,
+        req: BrokerRegistrationRequest,
+        api_version: int,
+        respond: Callable[[BrokerRegistrationResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_broker_registration_request(header, req, api_version, respond)
+
+
+async def handle_consumer_group_describe(
+        handler: KafkaHandler,
+        header: ConsumerGroupDescribeRequestHeader,
+        req: ConsumerGroupDescribeRequest,
+        api_version: int,
+        respond: Callable[[ConsumerGroupDescribeResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_consumer_group_describe_request(header, req, api_version, respond)
+
+
+async def handle_consumer_group_heartbeat(
+        handler: KafkaHandler,
+        header: ConsumerGroupHeartbeatRequestHeader,
+        req: ConsumerGroupHeartbeatRequest,
+        api_version: int,
+        respond: Callable[[ConsumerGroupHeartbeatResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_consumer_group_heartbeat_request(header, req, api_version, respond)
+
+
+async def handle_controller_registration(
+        handler: KafkaHandler,
+        header: ControllerRegistrationRequestHeader,
+        req: ControllerRegistrationRequest,
+        api_version: int,
+        respond: Callable[[ControllerRegistrationResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_controller_registration_request(header, req, api_version, respond)
 
 
 async def handle_add_raft_voter(
@@ -261,6 +482,18 @@ def error_delete_topics(
     return handler.delete_topics_request_error_response(code, msg, req, api_version)
 
 
+def error_controlled_shutdown(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ControlledShutdownRequest,
+        api_version: int,
+) -> ControlledShutdownResponse:
+    return handler.controlled_shutdown_request_error_response(
+        code, msg, req, api_version
+    )
+
+
 def error_add_offsets_to_txn(
         handler: KafkaHandler,
         code: ErrorCode,
@@ -293,6 +526,150 @@ def error_alter_client_quotas(
         api_version: int,
 ) -> AlterClientQuotasResponse:
     return handler.alter_client_quotas_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_configs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterConfigsRequest,
+        api_version: int,
+) -> AlterConfigsResponse:
+    return handler.alter_configs_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_partition(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterPartitionRequest,
+        api_version: int,
+) -> AlterPartitionResponse:
+    return handler.alter_partition_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_partition_reassignments(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterPartitionReassignmentsRequest,
+        api_version: int,
+) -> AlterPartitionReassignmentsResponse:
+    return handler.alter_partition_reassignments_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_replica_log_dirs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterReplicaLogDirsRequest,
+        api_version: int,
+) -> AlterReplicaLogDirsResponse:
+    return handler.alter_replica_log_dirs_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_user_scram_credentials(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterUserScramCredentialsRequest,
+        api_version: int,
+) -> AlterUserScramCredentialsResponse:
+    return handler.alter_user_scram_credentials_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_assign_replicas_to_dirs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AssignReplicasToDirsRequest,
+        api_version: int,
+) -> AssignReplicasToDirsResponse:
+    return handler.assign_replicas_to_dirs_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_begin_quorum_epoch(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: BeginQuorumEpochRequest,
+        api_version: int,
+) -> BeginQuorumEpochResponse:
+    return handler.begin_quorum_epoch_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_broker_heartbeat(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: BrokerHeartbeatRequest,
+        api_version: int,
+) -> BrokerHeartbeatResponse:
+    return handler.broker_heartbeat_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_broker_registration(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: BrokerRegistrationRequest,
+        api_version: int,
+) -> BrokerRegistrationResponse:
+    return handler.broker_registration_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_consumer_group_describe(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ConsumerGroupDescribeRequest,
+        api_version: int,
+) -> ConsumerGroupDescribeResponse:
+    return handler.consumer_group_describe_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_consumer_group_heartbeat(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ConsumerGroupHeartbeatRequest,
+        api_version: int,
+) -> ConsumerGroupHeartbeatResponse:
+    return handler.consumer_group_heartbeat_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_controller_registration(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ControllerRegistrationRequest,
+        api_version: int,
+) -> ControllerRegistrationResponse:
+    return handler.controller_registration_request_error_response(
         code, msg, req, api_version
     )
 
@@ -330,6 +707,10 @@ request_map: dict[int, RequestHandlerMeta] = {
         handler_func=handle_fetch,
         error_response_func=error_fetch,
     ),
+    CONTROLLED_SHUTDOWN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_controlled_shutdown,
+        error_response_func=error_controlled_shutdown,
+    ),
     DELETE_TOPICS_API_KEY: RequestHandlerMeta(
         handler_func=handle_delete_topics,
         error_response_func=error_delete_topics,
@@ -345,6 +726,54 @@ request_map: dict[int, RequestHandlerMeta] = {
     ALTER_CLIENT_QUOTAS_API_KEY: RequestHandlerMeta(
         handler_func=handle_alter_client_quotas,
         error_response_func=error_alter_client_quotas,
+    ),
+    ALTER_CONFIGS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_configs,
+        error_response_func=error_alter_configs,
+    ),
+    ALTER_PARTITION_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_partition,
+        error_response_func=error_alter_partition,
+    ),
+    ALTER_PARTITION_REASSIGNMENTS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_partition_reassignments,
+        error_response_func=error_alter_partition_reassignments,
+    ),
+    ALTER_REPLICA_LOG_DIRS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_replica_log_dirs,
+        error_response_func=error_alter_replica_log_dirs,
+    ),
+    ALTER_USER_SCRAM_CREDENTIALS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_user_scram_credentials,
+        error_response_func=error_alter_user_scram_credentials,
+    ),
+    ASSIGN_REPLICAS_TO_DIRS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_assign_replicas_to_dirs,
+        error_response_func=error_assign_replicas_to_dirs,
+    ),
+    BEGIN_QUORUM_EPOCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_begin_quorum_epoch,
+        error_response_func=error_begin_quorum_epoch,
+    ),
+    BROKER_HEARTBEAT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_broker_heartbeat,
+        error_response_func=error_broker_heartbeat,
+    ),
+    BROKER_REGISTRATION_API_KEY: RequestHandlerMeta(
+        handler_func=handle_broker_registration,
+        error_response_func=error_broker_registration,
+    ),
+    CONSUMER_GROUP_DESCRIBE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_consumer_group_describe,
+        error_response_func=error_consumer_group_describe,
+    ),
+    CONSUMER_GROUP_HEARTBEAT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_consumer_group_heartbeat,
+        error_response_func=error_consumer_group_heartbeat,
+    ),
+    CONTROLLER_REGISTRATION_API_KEY: RequestHandlerMeta(
+        handler_func=handle_controller_registration,
+        error_response_func=error_controller_registration,
     ),
     ADD_RAFT_VOTER_API_KEY: RequestHandlerMeta(
         handler_func=handle_add_raft_voter,
