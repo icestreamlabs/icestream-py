@@ -116,6 +116,9 @@ from icestream.kafkaserver.handlers.add_raft_voter import (
 from icestream.kafkaserver.handlers.allocate_producer_ids import (
     AllocateProducerIdsRequest, AllocateProducerIdsRequestHeader, AllocateProducerIdsResponse
 )
+from icestream.kafkaserver.handlers.create_acls import (
+    CreateAclsRequest, CreateAclsRequestHeader, CreateAclsResponse
+)
 
 log = structlog.get_logger()
 
@@ -128,6 +131,7 @@ CREATE_TOPICS_API_KEY = 19
 DELETE_TOPICS_API_KEY = 20
 ADD_PARTITIONS_TO_TXN_API_KEY = 24
 ADD_OFFSETS_TO_TXN_API_KEY = 25
+CREATE_ACLS_API_KEY = 30
 ALTER_CONFIGS_API_KEY = 33
 ALTER_REPLICA_LOG_DIRS_API_KEY = 34
 ALTER_USER_SCRAM_CREDENTIALS_API_KEY = 51
@@ -139,9 +143,9 @@ CONSUMER_GROUP_HEARTBEAT_API_KEY = 68
 ALTER_CLIENT_QUOTAS_API_KEY = 49
 ALTER_PARTITION_REASSIGNMENTS_API_KEY = 45
 ALTER_PARTITION_API_KEY = 56
-ASSIGN_REPLICAS_TO_DIRS_API_KEY = 73
-CONTROLLER_REGISTRATION_API_KEY = 70
 ALLOCATE_PRODUCER_IDS_API_KEY = 67
+CONTROLLER_REGISTRATION_API_KEY = 70
+ASSIGN_REPLICAS_TO_DIRS_API_KEY = 73
 ADD_RAFT_VOTER_API_KEY = 80
 
 
@@ -187,6 +191,7 @@ api_compatibility: dict[int, tuple[int, int]] = {
     CONTROLLER_REGISTRATION_API_KEY: (0, 0),
     ADD_RAFT_VOTER_API_KEY: (0, 0),
     ALLOCATE_PRODUCER_IDS_API_KEY: (0, 0),
+    CREATE_ACLS_API_KEY: (0, 3),
 }
 
 
@@ -430,6 +435,25 @@ async def handle_add_raft_voter(
         respond: Callable[[AddRaftVoterResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_add_raft_voter_request(header, req, api_version, respond)
+
+async def handle_allocate_producer_ids(
+        handler: KafkaHandler,
+        header: AllocateProducerIdsRequestHeader,
+        req: AllocateProducerIdsRequest,
+        api_version: int,
+        respond: Callable[[AllocateProducerIdsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_allocate_producer_ids_request(header, req, api_version, respond)
+
+
+async def handle_create_acls(
+        handler: KafkaHandler,
+        header: CreateAclsRequestHeader,
+        req: CreateAclsRequest,
+        api_version: int,
+        respond: Callable[[CreateAclsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_create_acls_request(header, req, api_version, respond)
 
 
 def error_metadata(
@@ -685,6 +709,27 @@ def error_add_raft_voter(
         code, msg, req, api_version
     )
 
+def error_allocate_producer_ids(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AllocateProducerIdsRequest,
+        api_version: int,
+) -> AllocateProducerIdsResponse:
+    return handler.allocate_producer_ids_request_error_response(code, msg, req, api_version)
+
+
+def error_create_acls(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: CreateAclsRequest,
+        api_version: int,
+) -> CreateAclsResponse:
+    return handler.create_acls_request_error_response(
+        code, msg, req, api_version
+    )
+
 
 request_map: dict[int, RequestHandlerMeta] = {
     PRODUCE_API_KEY: RequestHandlerMeta(
@@ -778,6 +823,10 @@ request_map: dict[int, RequestHandlerMeta] = {
     ADD_RAFT_VOTER_API_KEY: RequestHandlerMeta(
         handler_func=handle_add_raft_voter,
         error_response_func=error_add_raft_voter,
+    ),
+    CREATE_ACLS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_create_acls,
+        error_response_func=error_create_acls,
     )
 }
 

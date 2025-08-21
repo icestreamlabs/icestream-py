@@ -16,6 +16,11 @@ from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequest, Cr
     CreateTopicsRequestHeader
 from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequestHeader, DeleteTopicsRequest, \
     DeleteTopicsResponse
+from icestream.kafkaserver.handlers.create_acls import (
+    CreateAclsRequest,
+    CreateAclsRequestHeader,
+    CreateAclsResponse,
+)
 from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
@@ -532,4 +537,22 @@ class KafkaHandler(Protocol):
             req: ControllerRegistrationRequest,
             api_version: int,
     ) -> ControllerRegistrationResponse:
+        pass
+
+    async def handle_create_acls_request(
+        self,
+        header: CreateAclsRequestHeader,
+        req: CreateAclsRequest,
+        api_version: int,
+        callback: Callable[[CreateAclsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def create_acls_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: CreateAclsRequest,
+        api_version: int,
+    ) -> CreateAclsResponse:
         pass
