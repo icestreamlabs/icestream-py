@@ -105,6 +105,16 @@ from icestream.kafkaserver.handlers.add_raft_voter import AddRaftVoterRequest, A
     AddRaftVoterResponse
 from icestream.kafkaserver.handlers.allocate_producer_ids import AllocateProducerIdsRequest, \
     AllocateProducerIdsRequestHeader, AllocateProducerIdsResponse
+from icestream.kafkaserver.handlers.create_delegation_token import (
+    CreateDelegationTokenRequest,
+    CreateDelegationTokenRequestHeader,
+    CreateDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.create_partitions import (
+    CreatePartitionsRequest,
+    CreatePartitionsRequestHeader,
+    CreatePartitionsResponse,
+)
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic
@@ -1373,4 +1383,40 @@ class Connection(KafkaHandler):
             req: AllocateProducerIdsRequest,
             api_version: int,
     ) -> AllocateProducerIdsResponse:
+        pass
+
+    async def handle_create_delegation_token_request(
+        self,
+        header: CreateDelegationTokenRequestHeader,
+        req: CreateDelegationTokenRequest,
+        api_version: int,
+        callback: Callable[[CreateDelegationTokenResponse], Awaitable[None]],
+    ):
+        pass
+
+    def create_delegation_token_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: CreateDelegationTokenRequest,
+        api_version: int,
+    ) -> CreateDelegationTokenResponse:
+        pass
+
+    async def handle_create_partitions_request(
+        self,
+        header: CreatePartitionsRequestHeader,
+        req: CreatePartitionsRequest,
+        api_version: int,
+        callback: Callable[[CreatePartitionsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def create_partitions_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: CreatePartitionsRequest,
+        api_version: int,
+    ) -> CreatePartitionsResponse:
         pass

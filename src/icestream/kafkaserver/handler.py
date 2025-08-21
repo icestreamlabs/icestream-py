@@ -119,6 +119,16 @@ from icestream.kafkaserver.handlers.allocate_producer_ids import (
 from icestream.kafkaserver.handlers.create_acls import (
     CreateAclsRequest, CreateAclsRequestHeader, CreateAclsResponse
 )
+from icestream.kafkaserver.handlers.create_delegation_token import (
+    CreateDelegationTokenRequest,
+    CreateDelegationTokenRequestHeader,
+    CreateDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.create_partitions import (
+    CreatePartitionsRequest,
+    CreatePartitionsRequestHeader,
+    CreatePartitionsResponse,
+)
 
 log = structlog.get_logger()
 
@@ -132,6 +142,8 @@ DELETE_TOPICS_API_KEY = 20
 ADD_PARTITIONS_TO_TXN_API_KEY = 24
 ADD_OFFSETS_TO_TXN_API_KEY = 25
 CREATE_ACLS_API_KEY = 30
+CREATE_DELEGATION_TOKEN_API_KEY = 38
+CREATE_PARTITIONS_API_KEY = 37
 ALTER_CONFIGS_API_KEY = 33
 ALTER_REPLICA_LOG_DIRS_API_KEY = 34
 ALTER_USER_SCRAM_CREDENTIALS_API_KEY = 51
@@ -192,6 +204,8 @@ api_compatibility: dict[int, tuple[int, int]] = {
     ADD_RAFT_VOTER_API_KEY: (0, 0),
     ALLOCATE_PRODUCER_IDS_API_KEY: (0, 0),
     CREATE_ACLS_API_KEY: (0, 3),
+    CREATE_DELEGATION_TOKEN_API_KEY: (0, 3),
+    CREATE_PARTITIONS_API_KEY: (0, 3),
 }
 
 
@@ -454,6 +468,26 @@ async def handle_create_acls(
         respond: Callable[[CreateAclsResponse], Awaitable[None]],
 ) -> None:
     await handler.handle_create_acls_request(header, req, api_version, respond)
+
+
+async def handle_create_delegation_token(
+        handler: KafkaHandler,
+        header: CreateDelegationTokenRequestHeader,
+        req: CreateDelegationTokenRequest,
+        api_version: int,
+        respond: Callable[[CreateDelegationTokenResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_create_delegation_token_request(header, req, api_version, respond)
+
+
+async def handle_create_partitions(
+        handler: KafkaHandler,
+        header: CreatePartitionsRequestHeader,
+        req: CreatePartitionsRequest,
+        api_version: int,
+        respond: Callable[[CreatePartitionsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_create_partitions_request(header, req, api_version, respond)
 
 
 def error_metadata(
@@ -731,6 +765,30 @@ def error_create_acls(
     )
 
 
+def error_create_delegation_token(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: CreateDelegationTokenRequest,
+        api_version: int,
+) -> CreateDelegationTokenResponse:
+    return handler.create_delegation_token_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_create_partitions(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: CreatePartitionsRequest,
+        api_version: int,
+) -> CreatePartitionsResponse:
+    return handler.create_partitions_request_error_response(
+        code, msg, req, api_version
+    )
+
+
 request_map: dict[int, RequestHandlerMeta] = {
     PRODUCE_API_KEY: RequestHandlerMeta(
         handler_func=handle_produce,
@@ -827,6 +885,14 @@ request_map: dict[int, RequestHandlerMeta] = {
     CREATE_ACLS_API_KEY: RequestHandlerMeta(
         handler_func=handle_create_acls,
         error_response_func=error_create_acls,
+    ),
+    CREATE_DELEGATION_TOKEN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_create_delegation_token,
+        error_response_func=error_create_delegation_token,
+    ),
+    CREATE_PARTITIONS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_create_partitions,
+        error_response_func=error_create_partitions,
     )
 }
 

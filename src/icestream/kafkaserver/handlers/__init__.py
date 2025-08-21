@@ -21,6 +21,16 @@ from icestream.kafkaserver.handlers.create_acls import (
     CreateAclsRequestHeader,
     CreateAclsResponse,
 )
+from icestream.kafkaserver.handlers.create_delegation_token import (
+    CreateDelegationTokenRequest,
+    CreateDelegationTokenRequestHeader,
+    CreateDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.create_partitions import (
+    CreatePartitionsRequest,
+    CreatePartitionsRequestHeader,
+    CreatePartitionsResponse,
+)
 from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
@@ -555,4 +565,40 @@ class KafkaHandler(Protocol):
         req: CreateAclsRequest,
         api_version: int,
     ) -> CreateAclsResponse:
+        pass
+
+    async def handle_create_delegation_token_request(
+        self,
+        header: CreateDelegationTokenRequestHeader,
+        req: CreateDelegationTokenRequest,
+        api_version: int,
+        callback: Callable[[CreateDelegationTokenResponse], Awaitable[None]],
+    ):
+        pass
+
+    def create_delegation_token_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: CreateDelegationTokenRequest,
+        api_version: int,
+    ) -> CreateDelegationTokenResponse:
+        pass
+
+    async def handle_create_partitions_request(
+        self,
+        header: CreatePartitionsRequestHeader,
+        req: CreatePartitionsRequest,
+        api_version: int,
+        callback: Callable[[CreatePartitionsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def create_partitions_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: CreatePartitionsRequest,
+        api_version: int,
+    ) -> CreatePartitionsResponse:
         pass
