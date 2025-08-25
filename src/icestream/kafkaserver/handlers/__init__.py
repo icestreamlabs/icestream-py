@@ -16,6 +16,56 @@ from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequest, Cr
     CreateTopicsRequestHeader
 from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequestHeader, DeleteTopicsRequest, \
     DeleteTopicsResponse
+from icestream.kafkaserver.handlers.delete_acls import (
+    DeleteAclsRequest,
+    DeleteAclsRequestHeader,
+    DeleteAclsResponse,
+)
+from icestream.kafkaserver.handlers.delete_groups import (
+    DeleteGroupsRequest,
+    DeleteGroupsRequestHeader,
+    DeleteGroupsResponse,
+)
+from icestream.kafkaserver.handlers.delete_records import (
+    DeleteRecordsRequest,
+    DeleteRecordsRequestHeader,
+    DeleteRecordsResponse,
+)
+from icestream.kafkaserver.handlers.delete_share_group_state import (
+    DeleteShareGroupStateRequest,
+    DeleteShareGroupStateRequestHeader,
+    DeleteShareGroupStateResponse,
+)
+from icestream.kafkaserver.handlers.describe_acls import (
+    DescribeAclsRequest,
+    DescribeAclsRequestHeader,
+    DescribeAclsResponse,
+)
+from icestream.kafkaserver.handlers.describe_client_quotas import (
+    DescribeClientQuotasRequest,
+    DescribeClientQuotasRequestHeader,
+    DescribeClientQuotasResponse,
+)
+from icestream.kafkaserver.handlers.describe_cluster import (
+    DescribeClusterRequest,
+    DescribeClusterRequestHeader,
+    DescribeClusterResponse,
+)
+from icestream.kafkaserver.handlers.describe_configs import (
+    DescribeConfigsRequest,
+    DescribeConfigsRequestHeader,
+    DescribeConfigsResponse,
+)
+from icestream.kafkaserver.handlers.describe_delegation_token import (
+    DescribeDelegationTokenRequest,
+    DescribeDelegationTokenRequestHeader,
+    DescribeDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.describe_groups import (
+    DescribeGroupsRequest,
+    DescribeGroupsRequestHeader,
+    DescribeGroupsResponse,
+)
 from icestream.kafkaserver.handlers.create_acls import (
     CreateAclsRequest,
     CreateAclsRequestHeader,
@@ -223,6 +273,186 @@ class KafkaHandler(Protocol):
             req: DeleteTopicsRequest,
             api_version: int,
     ) -> DeleteTopicsResponse:
+        pass
+
+    async def handle_delete_acls_request(
+        self,
+        header: DeleteAclsRequestHeader,
+        req: DeleteAclsRequest,
+        api_version: int,
+        callback: Callable[[DeleteAclsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_acls_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DeleteAclsRequest,
+        api_version: int,
+    ) -> DeleteAclsResponse:
+        pass
+
+    async def handle_delete_groups_request(
+        self,
+        header: DeleteGroupsRequestHeader,
+        req: DeleteGroupsRequest,
+        api_version: int,
+        callback: Callable[[DeleteGroupsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_groups_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DeleteGroupsRequest,
+        api_version: int,
+    ) -> DeleteGroupsResponse:
+        pass
+
+    async def handle_delete_records_request(
+        self,
+        header: DeleteRecordsRequestHeader,
+        req: DeleteRecordsRequest,
+        api_version: int,
+        callback: Callable[[DeleteRecordsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_records_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DeleteRecordsRequest,
+        api_version: int,
+    ) -> DeleteRecordsResponse:
+        pass
+
+    async def handle_delete_share_group_state_request(
+        self,
+        header: DeleteShareGroupStateRequestHeader,
+        req: DeleteShareGroupStateRequest,
+        api_version: int,
+        callback: Callable[[DeleteShareGroupStateResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_share_group_state_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DeleteShareGroupStateRequest,
+        api_version: int,
+    ) -> DeleteShareGroupStateResponse:
+        pass
+
+    async def handle_describe_acls_request(
+        self,
+        header: DescribeAclsRequestHeader,
+        req: DescribeAclsRequest,
+        api_version: int,
+        callback: Callable[[DescribeAclsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_acls_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DescribeAclsRequest,
+        api_version: int,
+    ) -> DescribeAclsResponse:
+        pass
+
+    async def handle_describe_client_quotas_request(
+        self,
+        header: DescribeClientQuotasRequestHeader,
+        req: DescribeClientQuotasRequest,
+        api_version: int,
+        callback: Callable[[DescribeClientQuotasResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_client_quotas_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DescribeClientQuotasRequest,
+        api_version: int,
+    ) -> DescribeClientQuotasResponse:
+        pass
+
+    async def handle_describe_cluster_request(
+        self,
+        header: DescribeClusterRequestHeader,
+        req: DescribeClusterRequest,
+        api_version: int,
+        callback: Callable[[DescribeClusterResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_cluster_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DescribeClusterRequest,
+        api_version: int,
+    ) -> DescribeClusterResponse:
+        pass
+
+    async def handle_describe_configs_request(
+        self,
+        header: DescribeConfigsRequestHeader,
+        req: DescribeConfigsRequest,
+        api_version: int,
+        callback: Callable[[DescribeConfigsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_configs_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DescribeConfigsRequest,
+        api_version: int,
+    ) -> DescribeConfigsResponse:
+        pass
+
+    async def handle_describe_delegation_token_request(
+        self,
+        header: DescribeDelegationTokenRequestHeader,
+        req: DescribeDelegationTokenRequest,
+        api_version: int,
+        callback: Callable[[DescribeDelegationTokenResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_delegation_token_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DescribeDelegationTokenRequest,
+        api_version: int,
+    ) -> DescribeDelegationTokenResponse:
+        pass
+
+    async def handle_describe_groups_request(
+        self,
+        header: DescribeGroupsRequestHeader,
+        req: DescribeGroupsRequest,
+        api_version: int,
+        callback: Callable[[DescribeGroupsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_groups_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: DescribeGroupsRequest,
+        api_version: int,
+    ) -> DescribeGroupsResponse:
         pass
 
     async def handle_add_offsets_to_txn_request(
