@@ -1,59 +1,23 @@
-import asyncio
-import datetime
 import io
 import struct
-import uuid
-from asyncio import Future, StreamReader, StreamWriter
-from asyncio import Server as AsyncIOServer
-from typing import Any, Callable, List, Sequence, Awaitable
+from asyncio import StreamWriter
+from dataclasses import dataclass
+from typing import Awaitable, Callable
 
-import kio.schema.api_versions.v0 as api_v0
-import kio.schema.api_versions.v1 as api_v1
-import kio.schema.api_versions.v2 as api_v2
-import kio.schema.api_versions.v3 as api_v3
-import kio.schema.api_versions.v4 as api_v4
-import kio.schema.metadata.v0 as metadata_v0
-import kio.schema.metadata.v1 as metadata_v1
-import kio.schema.metadata.v2 as metadata_v2
-import kio.schema.metadata.v3 as metadata_v3
-import kio.schema.metadata.v4 as metadata_v4
-import kio.schema.metadata.v5 as metadata_v5
-import kio.schema.metadata.v6 as metadata_v6
-import kio.schema.produce.v0 as produce_v0
-import kio.schema.produce.v1 as produce_v1
-import kio.schema.produce.v2 as produce_v2
-import kio.schema.produce.v3 as produce_v3
-import kio.schema.produce.v4 as produce_v4
-import kio.schema.produce.v5 as produce_v5
-import kio.schema.produce.v6 as produce_v6
-import kio.schema.produce.v7 as produce_v7
-import kio.schema.produce.v8 as produce_v8
-import kio.schema.create_topics.v0 as create_topics_v0
-import kio.schema.create_topics.v1 as create_topics_v1
-import kio.schema.create_topics.v2 as create_topics_v2
-import kio.schema.create_topics.v3 as create_topics_v3
-import kio.schema.create_topics.v4 as create_topics_v4
-import kio.schema.create_topics.v5 as create_topics_v5
-import kio.schema.create_topics.v6 as create_topics_v6
-import kio.schema.create_topics.v7 as create_topics_v7
 import structlog
-from kio.index import load_payload_module
+from kio.index import load_request_schema, load_response_schema
 from kio.schema.errors import ErrorCode
-from kio.schema.types import BrokerId, TopicName
-from kio.serial.readers import read_int32
+from kio.serial import entity_reader, entity_writer
 from kio.static.constants import EntityType
-from kio.static.primitive import i16, i32, i32Timedelta, i64
-from sqlalchemy import select, update
-from sqlalchemy.orm import selectinload
 
-from icestream.config import Config
-from icestream.kafkaserver.handler import api_compatibility, handle_kafka_request
 from icestream.kafkaserver.handlers import KafkaHandler
 from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
     ApiVersionsRequestHeader,
     ApiVersionsResponse,
 )
+from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequestHeader, CreateTopicsRequest, \
+    CreateTopicsResponse
 from icestream.kafkaserver.handlers.metadata import (
     MetadataRequest,
     MetadataRequestHeader,
@@ -64,67 +28,158 @@ from icestream.kafkaserver.handlers.produce import (
     ProduceRequestHeader,
     ProduceResponse,
 )
-from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequest, CreateTopicsRequestHeader, \
-    CreateTopicsResponse
-from icestream.kafkaserver.handlers.fetch import FetchRequest, FetchRequestHeader, FetchResponse
-from icestream.kafkaserver.handlers.add_offsets_to_txn import AddOffsetsToTxnRequest, AddOffsetsToTxnRequestHeader, \
-    AddOffsetsToTxnResponse
-from icestream.kafkaserver.handlers.add_partitions_to_txn import AddPartitionsToTxnRequest, \
-    AddPartitionsToTxnRequestHeader, AddPartitionsToTxnResponse
-from icestream.kafkaserver.handlers.alter_client_quotas import AlterClientQuotasRequest, AlterClientQuotasRequestHeader, \
-    AlterClientQuotasResponse
-from icestream.kafkaserver.handlers.alter_configs import AlterConfigsRequest, AlterConfigsRequestHeader, \
-    AlterConfigsResponse
-from icestream.kafkaserver.handlers.alter_partition import AlterPartitionRequest, AlterPartitionRequestHeader, \
-    AlterPartitionResponse
-from icestream.kafkaserver.handlers.alter_partition_reassignments import AlterPartitionReassignmentsRequest, \
-    AlterPartitionReassignmentsRequestHeader, AlterPartitionReassignmentsResponse
-from icestream.kafkaserver.handlers.alter_replica_log_dirs import AlterReplicaLogDirsRequest, \
-    AlterReplicaLogDirsRequestHeader, AlterReplicaLogDirsResponse
-from icestream.kafkaserver.handlers.alter_user_scram_credentials import AlterUserScramCredentialsRequest, \
-    AlterUserScramCredentialsRequestHeader, AlterUserScramCredentialsResponse
-from icestream.kafkaserver.handlers.assign_replicas_to_dirs import AssignReplicasToDirsRequest, \
-    AssignReplicasToDirsRequestHeader, AssignReplicasToDirsResponse
-from icestream.kafkaserver.handlers.begin_quorum_epoch import BeginQuorumEpochRequest, \
-    BeginQuorumEpochRequestHeader, BeginQuorumEpochResponse
-from icestream.kafkaserver.handlers.broker_heartbeat import BrokerHeartbeatRequest, \
-    BrokerHeartbeatRequestHeader, BrokerHeartbeatResponse
-from icestream.kafkaserver.handlers.broker_registration import BrokerRegistrationRequest, \
-    BrokerRegistrationRequestHeader, BrokerRegistrationResponse
-from icestream.kafkaserver.handlers.consumer_group_describe import ConsumerGroupDescribeRequest, \
-    ConsumerGroupDescribeRequestHeader, ConsumerGroupDescribeResponse
-from icestream.kafkaserver.handlers.consumer_group_heartbeat import ConsumerGroupHeartbeatRequest, \
-    ConsumerGroupHeartbeatRequestHeader, ConsumerGroupHeartbeatResponse
-from icestream.kafkaserver.handlers.controlled_shutdown import ControlledShutdownRequest, \
-    ControlledShutdownRequestHeader, ControlledShutdownResponse
-from icestream.kafkaserver.handlers.controller_registration import ControllerRegistrationRequest, \
-    ControllerRegistrationRequestHeader, ControllerRegistrationResponse
-from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequest, DeleteTopicsRequestHeader, \
-    DeleteTopicsResponse
-from icestream.kafkaserver.handlers.delete_acls import DeleteAclsRequest, DeleteAclsRequestHeader, \
-    DeleteAclsResponse
-from icestream.kafkaserver.handlers.delete_groups import DeleteGroupsRequest, DeleteGroupsRequestHeader, \
-    DeleteGroupsResponse
-from icestream.kafkaserver.handlers.delete_records import DeleteRecordsRequest, DeleteRecordsRequestHeader, \
-    DeleteRecordsResponse
-from icestream.kafkaserver.handlers.delete_share_group_state import DeleteShareGroupStateRequest, \
-    DeleteShareGroupStateRequestHeader, DeleteShareGroupStateResponse
-from icestream.kafkaserver.handlers.describe_acls import DescribeAclsRequest, DescribeAclsRequestHeader, \
-    DescribeAclsResponse
-from icestream.kafkaserver.handlers.describe_client_quotas import DescribeClientQuotasRequest, \
-    DescribeClientQuotasRequestHeader, DescribeClientQuotasResponse
-from icestream.kafkaserver.handlers.describe_cluster import DescribeClusterRequest, DescribeClusterRequestHeader, \
-    DescribeClusterResponse
-from icestream.kafkaserver.handlers.describe_configs import DescribeConfigsRequest, DescribeConfigsRequestHeader, \
-    DescribeConfigsResponse
-from icestream.kafkaserver.handlers.describe_delegation_token import DescribeDelegationTokenRequest, \
-    DescribeDelegationTokenRequestHeader, DescribeDelegationTokenResponse
-from icestream.kafkaserver.handlers.describe_groups import DescribeGroupsRequest, DescribeGroupsRequestHeader, \
-    DescribeGroupsResponse
-from icestream.kafkaserver.handlers.add_raft_voter import AddRaftVoterRequest, AddRaftVoterRequestHeader, \
-    AddRaftVoterResponse
-from icestream.kafkaserver.handlers.allocate_producer_ids import AllocateProducerIdsRequest, \
-    AllocateProducerIdsRequestHeader, AllocateProducerIdsResponse
+from icestream.kafkaserver.handlers.fetch import (
+    FetchRequest,
+    FetchRequestHeader,
+    FetchResponse,
+)
+from icestream.kafkaserver.handlers.delete_topics import (
+    DeleteTopicsRequest, DeleteTopicsRequestHeader, DeleteTopicsResponse
+)
+from icestream.kafkaserver.handlers.delete_acls import (
+    DeleteAclsRequest, DeleteAclsRequestHeader, DeleteAclsResponse
+)
+from icestream.kafkaserver.handlers.delete_groups import (
+    DeleteGroupsRequest, DeleteGroupsRequestHeader, DeleteGroupsResponse
+)
+from icestream.kafkaserver.handlers.delete_records import (
+    DeleteRecordsRequest, DeleteRecordsRequestHeader, DeleteRecordsResponse
+)
+from icestream.kafkaserver.handlers.delete_share_group_state import (
+    DeleteShareGroupStateRequest, DeleteShareGroupStateRequestHeader, DeleteShareGroupStateResponse
+)
+from icestream.kafkaserver.handlers.describe_acls import (
+    DescribeAclsRequest, DescribeAclsRequestHeader, DescribeAclsResponse
+)
+from icestream.kafkaserver.handlers.describe_client_quotas import (
+    DescribeClientQuotasRequest, DescribeClientQuotasRequestHeader, DescribeClientQuotasResponse
+)
+from icestream.kafkaserver.handlers.describe_cluster import (
+    DescribeClusterRequest, DescribeClusterRequestHeader, DescribeClusterResponse
+)
+from icestream.kafkaserver.handlers.describe_configs import (
+    DescribeConfigsRequest, DescribeConfigsRequestHeader, DescribeConfigsResponse
+)
+from icestream.kafkaserver.handlers.describe_delegation_token import (
+    DescribeDelegationTokenRequest, DescribeDelegationTokenRequestHeader, DescribeDelegationTokenResponse
+)
+from icestream.kafkaserver.handlers.describe_groups import (
+    DescribeGroupsRequest, DescribeGroupsRequestHeader, DescribeGroupsResponse
+)
+from icestream.kafkaserver.handlers.describe_log_dirs import (
+    DescribeLogDirsRequest, DescribeLogDirsRequestHeader, DescribeLogDirsResponse
+)
+from icestream.kafkaserver.handlers.describe_producers import (
+    DescribeProducersRequest, DescribeProducersRequestHeader, DescribeProducersResponse
+)
+from icestream.kafkaserver.handlers.describe_quorum import (
+    DescribeQuorumRequest, DescribeQuorumRequestHeader, DescribeQuorumResponse
+)
+from icestream.kafkaserver.handlers.describe_topic_partitions import (
+    DescribeTopicPartitionsRequest, DescribeTopicPartitionsRequestHeader, DescribeTopicPartitionsResponse
+)
+from icestream.kafkaserver.handlers.describe_transactions import (
+    DescribeTransactionsRequest, DescribeTransactionsRequestHeader, DescribeTransactionsResponse
+)
+from icestream.kafkaserver.handlers.describe_user_scram_credentials import (
+    DescribeUserScramCredentialsRequest, DescribeUserScramCredentialsRequestHeader,
+    DescribeUserScramCredentialsResponse
+)
+from icestream.kafkaserver.handlers.elect_leaders import (
+    ElectLeadersRequest, ElectLeadersRequestHeader, ElectLeadersResponse
+)
+from icestream.kafkaserver.handlers.end_quorum_epoch import (
+    EndQuorumEpochRequest, EndQuorumEpochRequestHeader, EndQuorumEpochResponse
+)
+from icestream.kafkaserver.handlers.end_txn import (
+    EndTxnRequest, EndTxnRequestHeader, EndTxnResponse
+)
+from icestream.kafkaserver.handlers.envelope import (
+    EnvelopeRequest, EnvelopeRequestHeader, EnvelopeResponse
+)
+from icestream.kafkaserver.handlers.add_offsets_to_txn import (
+    AddOffsetsToTxnRequest, AddOffsetsToTxnRequestHeader, AddOffsetsToTxnResponse
+)
+from icestream.kafkaserver.handlers.add_partitions_to_txn import (
+    AddPartitionsToTxnRequest, AddPartitionsToTxnRequestHeader, AddPartitionsToTxnResponse
+)
+from icestream.kafkaserver.handlers.alter_client_quotas import (
+    AlterClientQuotasRequest, AlterClientQuotasRequestHeader, AlterClientQuotasResponse
+)
+from icestream.kafkaserver.handlers.alter_configs import (
+    AlterConfigsRequest,
+    AlterConfigsRequestHeader,
+    AlterConfigsResponse,
+)
+from icestream.kafkaserver.handlers.alter_partition import (
+    AlterPartitionRequest,
+    AlterPartitionRequestHeader,
+    AlterPartitionResponse,
+)
+from icestream.kafkaserver.handlers.alter_partition_reassignments import (
+    AlterPartitionReassignmentsRequest,
+    AlterPartitionReassignmentsRequestHeader,
+    AlterPartitionReassignmentsResponse,
+)
+from icestream.kafkaserver.handlers.alter_replica_log_dirs import (
+    AlterReplicaLogDirsRequest,
+    AlterReplicaLogDirsRequestHeader,
+    AlterReplicaLogDirsResponse,
+)
+from icestream.kafkaserver.handlers.alter_user_scram_credentials import (
+    AlterUserScramCredentialsRequest,
+    AlterUserScramCredentialsRequestHeader,
+    AlterUserScramCredentialsResponse,
+)
+from icestream.kafkaserver.handlers.assign_replicas_to_dirs import (
+    AssignReplicasToDirsRequest,
+    AssignReplicasToDirsRequestHeader,
+    AssignReplicasToDirsResponse,
+)
+from icestream.kafkaserver.handlers.begin_quorum_epoch import (
+    BeginQuorumEpochRequest,
+    BeginQuorumEpochRequestHeader,
+    BeginQuorumEpochResponse,
+)
+from icestream.kafkaserver.handlers.broker_heartbeat import (
+    BrokerHeartbeatRequest,
+    BrokerHeartbeatRequestHeader,
+    BrokerHeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.broker_registration import (
+    BrokerRegistrationRequest,
+    BrokerRegistrationRequestHeader,
+    BrokerRegistrationResponse,
+)
+from icestream.kafkaserver.handlers.consumer_group_describe import (
+    ConsumerGroupDescribeRequest,
+    ConsumerGroupDescribeRequestHeader,
+    ConsumerGroupDescribeResponse,
+)
+from icestream.kafkaserver.handlers.consumer_group_heartbeat import (
+    ConsumerGroupHeartbeatRequest,
+    ConsumerGroupHeartbeatRequestHeader,
+    ConsumerGroupHeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.controlled_shutdown import (
+    ControlledShutdownRequest,
+    ControlledShutdownRequestHeader,
+    ControlledShutdownResponse,
+)
+from icestream.kafkaserver.handlers.controller_registration import (
+    ControllerRegistrationRequest,
+    ControllerRegistrationRequestHeader,
+    ControllerRegistrationResponse,
+)
+from icestream.kafkaserver.handlers.add_raft_voter import (
+    AddRaftVoterRequest, AddRaftVoterRequestHeader, AddRaftVoterResponse
+)
+from icestream.kafkaserver.handlers.allocate_producer_ids import (
+    AllocateProducerIdsRequest, AllocateProducerIdsRequestHeader, AllocateProducerIdsResponse
+)
+from icestream.kafkaserver.handlers.create_acls import (
+    CreateAclsRequest, CreateAclsRequestHeader, CreateAclsResponse
+)
 from icestream.kafkaserver.handlers.create_delegation_token import (
     CreateDelegationTokenRequest,
     CreateDelegationTokenRequestHeader,
@@ -135,1488 +190,1354 @@ from icestream.kafkaserver.handlers.create_partitions import (
     CreatePartitionsRequestHeader,
     CreatePartitionsResponse,
 )
-from icestream.kafkaserver.protocol import KafkaRecordBatch
-from icestream.kafkaserver.types import ProduceTopicPartitionData
-from icestream.models import Partition, Topic
 
 log = structlog.get_logger()
 
+PRODUCE_API_KEY = 0
+FETCH_API_KEY = 1
+METADATA_API_KEY = 3
+CONTROLLED_SHUTDOWN_API_KEY = 7
+API_VERSIONS_API_KEY = 18
+CREATE_TOPICS_API_KEY = 19
+DELETE_TOPICS_API_KEY = 20
+DELETE_ACLS_API_KEY = 31
+DELETE_GROUPS_API_KEY = 42
+DELETE_RECORDS_API_KEY = 21
+DELETE_SHARE_GROUP_STATE_API_KEY = 86
+DESCRIBE_ACLS_API_KEY = 29
+DESCRIBE_CLIENT_QUOTAS_API_KEY = 48
+DESCRIBE_CLUSTER_API_KEY = 60
+DESCRIBE_CONFIGS_API_KEY = 32
+DESCRIBE_DELEGATION_TOKEN_API_KEY = 41
+DESCRIBE_GROUPS_API_KEY = 15
+DESCRIBE_LOG_DIRS_API_KEY = 35
+DESCRIBE_PRODUCERS_API_KEY = 61
+DESCRIBE_QUORUM_API_KEY = 55
+DESCRIBE_TOPIC_PARTITIONS_API_KEY = 75
+DESCRIBE_TRANSACTIONS_API_KEY = 65
+DESCRIBE_USER_SCRAM_CREDENTIALS_API_KEY = 50
+ELECT_LEADERS_API_KEY = 43
+END_QUORUM_EPOCH_API_KEY = 54
+END_TXN_API_KEY = 26
+ENVELOPE_API_KEY = 58
+ADD_PARTITIONS_TO_TXN_API_KEY = 24
+ADD_OFFSETS_TO_TXN_API_KEY = 25
+CREATE_ACLS_API_KEY = 30
+CREATE_DELEGATION_TOKEN_API_KEY = 38
+CREATE_PARTITIONS_API_KEY = 37
+ALTER_CONFIGS_API_KEY = 33
+ALTER_REPLICA_LOG_DIRS_API_KEY = 34
+ALTER_USER_SCRAM_CREDENTIALS_API_KEY = 51
+BEGIN_QUORUM_EPOCH_API_KEY = 53
+BROKER_HEARTBEAT_API_KEY = 63
+BROKER_REGISTRATION_API_KEY = 62
+CONSUMER_GROUP_DESCRIBE_API_KEY = 69
+CONSUMER_GROUP_HEARTBEAT_API_KEY = 68
+ALTER_CLIENT_QUOTAS_API_KEY = 49
+ALTER_PARTITION_REASSIGNMENTS_API_KEY = 45
+ALTER_PARTITION_API_KEY = 56
+ALLOCATE_PRODUCER_IDS_API_KEY = 67
+CONTROLLER_REGISTRATION_API_KEY = 70
+ASSIGN_REPLICAS_TO_DIRS_API_KEY = 73
+ADD_RAFT_VOTER_API_KEY = 80
 
-class Server:
-    def __init__(self, config: Config, queue: asyncio.Queue[ProduceTopicPartitionData]):
-        self.listener: AsyncIOServer | None = None
-        self.config = config
-        self.produce_queue = queue
 
-    async def run(self, host: str = "127.0.0.1", port: int = 9092):
-        try:
-            self.listener = await asyncio.start_server(Connection(self), host, port)
-            log.info(f"Server started listening on {host}:{port}")
-            async with self.listener:
-                await self.listener.serve_forever()
-        except Exception as e:
-            log.error(f"Error in server run: {e}")
-            if self.listener:
-                self.listener.close()
+@dataclass
+class RequestHandlerMeta:
+    handler_func: Callable[
+        [
+            KafkaHandler,
+            EntityType.header,
+            EntityType.request,
+            int,
+            Callable[[EntityType.response], Awaitable[None]],
+        ],
+        Awaitable[None],
+    ]
+    error_response_func: Callable[
+        [KafkaHandler, ErrorCode, str, EntityType.request, int], EntityType.response
+    ]
 
 
-class Connection(KafkaHandler):
-    def __init__(self, s: Server):
-        self.server: Server = s
+api_compatibility: dict[int, tuple[int, int]] = {
+    PRODUCE_API_KEY: (0, 8),
+    FETCH_API_KEY: (0, 11),
+    METADATA_API_KEY: (0, 4),
+    CONTROLLED_SHUTDOWN_API_KEY: (0, 3),
+    API_VERSIONS_API_KEY: (0, 4),
+    CREATE_TOPICS_API_KEY: (0, 4),
+    DELETE_TOPICS_API_KEY: (0, 6),
+    DELETE_ACLS_API_KEY: (0, 3),
+    DELETE_GROUPS_API_KEY: (0, 2),
+    DELETE_RECORDS_API_KEY: (0, 2),
+    DELETE_SHARE_GROUP_STATE_API_KEY: (0, 0),
+    DESCRIBE_ACLS_API_KEY: (0, 3),
+    DESCRIBE_CLIENT_QUOTAS_API_KEY: (0, 1),
+    DESCRIBE_CLUSTER_API_KEY: (0, 1),
+    DESCRIBE_CONFIGS_API_KEY: (0, 4),
+    DESCRIBE_DELEGATION_TOKEN_API_KEY: (0, 3),
+    DESCRIBE_GROUPS_API_KEY: (0, 5),
+    DESCRIBE_LOG_DIRS_API_KEY: (0, 4),
+    DESCRIBE_PRODUCERS_API_KEY: (0, 0),
+    DESCRIBE_QUORUM_API_KEY: (0, 2),
+    DESCRIBE_TOPIC_PARTITIONS_API_KEY: (0, 0),
+    DESCRIBE_TRANSACTIONS_API_KEY: (0, 0),
+    DESCRIBE_USER_SCRAM_CREDENTIALS_API_KEY: (0, 0),
+    ELECT_LEADERS_API_KEY: (0, 2),
+    END_QUORUM_EPOCH_API_KEY: (0, 1),
+    END_TXN_API_KEY: (0, 4),
+    ENVELOPE_API_KEY: (0, 0),
+    ADD_OFFSETS_TO_TXN_API_KEY: (0, 4),
+    ADD_PARTITIONS_TO_TXN_API_KEY: (0, 5),
+    ALTER_CLIENT_QUOTAS_API_KEY: (0, 1),
+    ALTER_CONFIGS_API_KEY: (0, 2),
+    ALTER_PARTITION_API_KEY: (0, 3),
+    ALTER_PARTITION_REASSIGNMENTS_API_KEY: (0, 0),
+    ALTER_REPLICA_LOG_DIRS_API_KEY: (0, 2),
+    ALTER_USER_SCRAM_CREDENTIALS_API_KEY: (0, 0),
+    ASSIGN_REPLICAS_TO_DIRS_API_KEY: (0, 0),
+    BEGIN_QUORUM_EPOCH_API_KEY: (0, 1),
+    BROKER_HEARTBEAT_API_KEY: (0, 1),
+    BROKER_REGISTRATION_API_KEY: (0, 4),
+    CONSUMER_GROUP_DESCRIBE_API_KEY: (0, 0),
+    CONSUMER_GROUP_HEARTBEAT_API_KEY: (0, 0),
+    CONTROLLER_REGISTRATION_API_KEY: (0, 0),
+    ADD_RAFT_VOTER_API_KEY: (0, 0),
+    ALLOCATE_PRODUCER_IDS_API_KEY: (0, 0),
+    CREATE_ACLS_API_KEY: (0, 3),
+    CREATE_DELEGATION_TOKEN_API_KEY: (0, 3),
+    CREATE_PARTITIONS_API_KEY: (0, 3),
+}
 
-    async def __call__(self, reader: StreamReader, writer: StreamWriter) -> None:
-        try:
-            while True:
-                # read more about the kafka protocol here https://kafka.apache.org/0101/protocol.html
-                msg_length_bytes = await reader.readexactly(
-                    4
-                )  # kafka messages are prefixed by their length
-                msg_length = read_int32(
-                    io.BytesIO(msg_length_bytes)
-                )  # read the 4 byte integer, uses >i under the hood
-                message = await reader.readexactly(msg_length)
-                api_key = struct.unpack(
-                    ">H", message[:2]
-                )[
-                    0
-                ]  # the api key is the first field, which is a 2 byte unsigned integer big endian
-                await handle_kafka_request(api_key, message, self, writer)
 
-        except asyncio.IncompleteReadError as e:
-            log.info(f"client disconnected with error: {e}")
-        except Exception as e:
-            log.error(f"error handling connection {e}")
-        finally:
-            try:
-                writer.close()
-                await writer.wait_closed()
-                log.info("connection closed")
-            except Exception as e:
-                log.error(f"error closing writer: {e}")
-
-    async def handle_produce_request(
-        self,
+async def handle_produce(
+        handler: KafkaHandler,
         header: ProduceRequestHeader,
         req: ProduceRequest,
         api_version: int,
-        callback: Callable[[ProduceResponse], Any],
-    ):
-        log.info(f"handling produce request {req}")
-        topic_responses: List[produce_v8.response.TopicProduceResponse] = []
+        respond: Callable[[ProduceResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_produce_request(header, req, api_version, respond)
 
-        for topic in req.topic_data:
-            topic_name = topic.name
-            partition_responses: List[produce_v8.response.PartitionProduceResponse] = []
 
-            for partition in topic.partition_data:
-                partition_idx = partition.index
-                record_count = 0
-                records = partition.records
-                if records is not None:
-                    record_count = int(struct.unpack(">I", records[57:61])[0])
-                magic = records[16]
-                error_code: ErrorCode | None = None
-                if magic != 2:
-                    error_code = ErrorCode.unsupported_for_message_format
-                    partition_response = produce_v8.response.PartitionProduceResponse(
-                        index=i32(partition_idx),
-                        error_code=ErrorCode.none if error_code is None else error_code,
-                        base_offset=i64(
-                            -1
-                        ),  # magic number wrong, so no offsets assigned
-                        log_append_time=None,
-                        log_start_offset=i64(-1),
-                        record_errors=(),
-                        error_message="wrong magic number",
-                    )
-                    partition_responses.append(partition_response)
-                    continue
-
-                log.info("produce", records=records[61:])
-
-                log.info(
-                    "produce",
-                    topic=topic_name,
-                    partition=partition_idx,
-                    num_records=record_count,
-                )
-
-                if record_count == 0:
-                    partition_response = produce_v8.response.PartitionProduceResponse(
-                        index=i32(partition_idx),
-                        error_code=ErrorCode.none if error_code is None else error_code,
-                        base_offset=i64(-1),  # no records so no offsets assigned
-                        log_append_time=None,
-                        log_start_offset=i64(-1),
-                        record_errors=(),
-                        error_message=None,
-                    )
-                    partition_responses.append(partition_response)
-                    continue
-
-                # allocate the offsets
-                async with self.server.config.async_session_factory() as session:
-                    result = await session.execute(
-                        update(Partition)
-                        .where(
-                            Partition.topic_name == topic_name,
-                            Partition.partition_number == partition_idx,
-                        )
-                        .values(last_offset=Partition.last_offset + record_count)
-                        .returning(
-                            Partition.id,
-                            Partition.last_offset,
-                            Partition.log_start_offset,
-                        )
-                    )
-                    await session.commit()
-                row = result.first()
-                # if the row is none, it's probably because there's no topic or partition for it
-                if row is None:
-                    error_code = ErrorCode.unknown_topic_or_partition
-                    partition_response = produce_v8.response.PartitionProduceResponse(
-                        index=i32(partition_idx),
-                        error_code=ErrorCode.none if error_code is None else error_code,
-                        base_offset=i64(
-                            -1
-                        ),  # likely no topic/partition, so no offsets assigned
-                        log_append_time=None,
-                        log_start_offset=i64(-1),
-                        record_errors=(),
-                        error_message="unknown topic or partition",
-                    )
-                    partition_responses.append(partition_response)
-                    continue
-                _, last_offset, log_start_offset = row
-                first_offset = last_offset - record_count + 1
-
-                # need to send the message batch over to the WALManager via self.server.produce_queue (asyncio.Queue)
-                # but with a future so that this part that's creating the PartitionProduceResponse can wait for the response from the WALManager
-                # but at the end need to append the PartitionProduceResponse to the `partition_responses` list.
-                partition_flush_result_fut = Future()
-                produce_topic_partition_data = ProduceTopicPartitionData(
-                    topic=topic_name,
-                    partition=partition_idx,
-                    kafka_record_batch=KafkaRecordBatch.from_bytes(records),
-                    flush_result=partition_flush_result_fut,
-                )
-                await self.server.produce_queue.put(produce_topic_partition_data)
-
-                try:
-                    await asyncio.wait_for(
-                        partition_flush_result_fut,
-                        timeout=self.server.config.FLUSH_INTERVAL * 2,
-                    )
-                    # success
-                except asyncio.CancelledError:
-                    error_code = ErrorCode.unknown_server_error
-                except asyncio.TimeoutError:
-                    error_code = ErrorCode.request_timed_out
-                except Exception as e:
-                    error_code = ErrorCode.unknown_server_error
-                finally:
-                    partition_response = produce_v8.response.PartitionProduceResponse(
-                        index=i32(partition_idx),
-                        error_code=ErrorCode.none if error_code is None else error_code,
-                        base_offset=i64(first_offset if error_code is None else -1),
-                        log_append_time=None,  # TODO
-                        log_start_offset=i64(log_start_offset),
-                        record_errors=(),
-                        error_message=None,
-                    )
-                    partition_responses.append(partition_response)
-
-            topic_response = produce_v8.response.TopicProduceResponse(
-                name=topic_name,
-                partition_responses=tuple(partition_responses),
-            )
-            topic_responses.append(topic_response)
-
-        reference_response = produce_v8.response.ProduceResponse(
-            responses=tuple(topic_responses),
-            throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
-        )
-
-        if api_version == 0:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v0.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v0.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(produce_v0.response.ProduceResponse(responses=tuple(topics)))
-
-        elif api_version == 1:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v1.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v1.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(
-                produce_v1.response.ProduceResponse(
-                    responses=tuple(topics),
-                    throttle_time=reference_response.throttle_time,
-                )
-            )
-
-        elif api_version == 2:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v2.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                        log_append_time=p.log_append_time,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v2.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(
-                produce_v2.response.ProduceResponse(
-                    responses=tuple(topics),
-                    throttle_time=reference_response.throttle_time,
-                )
-            )
-
-        elif api_version == 3:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v3.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                        log_append_time=p.log_append_time,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v3.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(
-                produce_v3.response.ProduceResponse(
-                    responses=tuple(topics),
-                    throttle_time=reference_response.throttle_time,
-                )
-            )
-
-        elif api_version == 4:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v4.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                        log_append_time=p.log_append_time,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v4.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(
-                produce_v4.response.ProduceResponse(
-                    responses=tuple(topics),
-                    throttle_time=reference_response.throttle_time,
-                )
-            )
-
-        elif api_version == 5:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v5.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                        log_append_time=p.log_append_time,
-                        log_start_offset=p.log_start_offset,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v5.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(
-                produce_v5.response.ProduceResponse(
-                    responses=tuple(topics),
-                    throttle_time=reference_response.throttle_time,
-                )
-            )
-
-        elif api_version == 6:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v6.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                        log_append_time=p.log_append_time,
-                        log_start_offset=p.log_start_offset,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v6.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(
-                produce_v6.response.ProduceResponse(
-                    responses=tuple(topics),
-                    throttle_time=reference_response.throttle_time,
-                )
-            )
-
-        elif api_version == 7:
-            topics = []
-            for topic in reference_response.responses:
-                partitions = [
-                    produce_v7.response.PartitionProduceResponse(
-                        index=p.index,
-                        error_code=p.error_code,
-                        base_offset=p.base_offset,
-                        log_append_time=p.log_append_time,
-                        log_start_offset=p.log_start_offset,
-                    )
-                    for p in topic.partition_responses
-                ]
-                topics.append(
-                    produce_v7.response.TopicProduceResponse(
-                        name=topic.name,
-                        partition_responses=tuple(partitions),
-                    )
-                )
-            await callback(
-                produce_v7.response.ProduceResponse(
-                    responses=tuple(topics),
-                    throttle_time=reference_response.throttle_time,
-                )
-            )
-
-        elif api_version == 8:
-            await callback(reference_response)
-
-        else:
-            log.error(f"Unsupported produce version: {api_version}")
-
-    def produce_request_error_response(
-        self,
-        error_code: ErrorCode,
-        error_message: str,
-        req: ProduceRequest,
-        api_version: int,
-    ) -> ProduceResponse:
-        # v8 has error_message and record_errors in the PartitionProduceResponse, ignore it for now
-        mod = load_payload_module(0, api_version, EntityType.response)
-        responses = []
-        for i, topic_data in enumerate(req.topic_data):
-            partition_response = []
-            for j, partition_data in enumerate(topic_data.partition_data):
-                partition_produce_response = mod.PartitionProduceResponse(
-                    index=partition_data.index,
-                    error_code=error_code,
-                    base_offset=i64(0),
-                    record_errors=(),
-                )
-                partition_response.append(partition_produce_response)
-
-            topic_produce_response = mod.TopicProduceResponse(
-                name=topic_data.name, partition_responses=tuple(partition_response)
-            )
-            responses.append(topic_produce_response)
-        resp = mod.ProduceResponse(responses=tuple(responses))
-        return resp
-
-    async def handle_metadata_request(
-        self,
+async def handle_metadata(
+        handler: KafkaHandler,
         header: MetadataRequestHeader,
         req: MetadataRequest,
         api_version: int,
-        callback: Callable[[MetadataResponse], Any],
-    ):
-        log.info("handling metadata request", topics=[t.name for t in req.topics])
+        respond: Callable[[MetadataResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_metadata_request(header, req, api_version, respond)
 
-        async with self.server.config.async_session_factory() as session:
-            topic_result: Sequence[Topic]
-            if not req.topics:
-                result = await session.execute(
-                    select(Topic).options(selectinload(Topic.partitions))
-                )
-                topic_result = result.scalars().all()
-            else:
-                topic_names = [t.name for t in req.topics]
-                result = await session.execute(
-                    select(Topic)
-                    .where(Topic.name.in_(topic_names))
-                    .options(selectinload(Topic.partitions))
-                )
-                topic_result = result.scalars().all()
 
-        # get brokers
-        # since we're stateless we might be able to get away with spoofing a single broker
-        # host would be the lb or k8s service or whatever
-        # node id would always be 0
-        # rack would always be None
-        broker = metadata_v6.response.MetadataResponseBroker(
-            node_id=BrokerId(0), host="localhost", port=i32(9092), rack=None
-        )
-
-        # we need to respect the topic list passed in by the request
-        # in our case it'll get passed to postgres, but an empty list means all of them
-
-        topics: List[metadata_v6.response.MetadataResponseTopic] = []
-        for topic in topic_result:
-            partition_metadata = [
-                metadata_v6.response.MetadataResponsePartition(
-                    error_code=ErrorCode.none,
-                    partition_index=i32(pidx.partition_number),
-                    leader_id=BrokerId(0),
-                    replica_nodes=(BrokerId(0),),
-                    isr_nodes=(BrokerId(0),),
-                    offline_replicas=(),
-                )
-                for pidx in topic.partitions
-            ]
-            topics.append(
-                metadata_v6.response.MetadataResponseTopic(
-                    error_code=ErrorCode.none,
-                    name=TopicName(topic.name),
-                    is_internal=False,
-                    partitions=tuple(partition_metadata),
-                )
-            )
-
-        response = metadata_v6.response.MetadataResponse(
-            throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
-            brokers=(broker,),
-            cluster_id="test-cluster",
-            controller_id=BrokerId(0),
-            topics=tuple(topics),
-        )
-
-        if api_version == 0:
-            _broker = metadata_v0.response.MetadataResponseBroker(
-                node_id=broker.node_id,
-                host=broker.host,
-                port=broker.port,
-            )
-            _topics = []
-            for topic in topics:
-                _partition_metadata = []
-                for partition in topic.partitions:
-                    _partition = metadata_v0.response.MetadataResponsePartition(
-                        error_code=partition.error_code,
-                        partition_index=partition.partition_index,
-                        leader_id=partition.leader_id,
-                        replica_nodes=partition.replica_nodes,
-                        isr_nodes=partition.isr_nodes,
-                    )
-                    _partition_metadata.append(_partition)
-                _topic = metadata_v0.response.MetadataResponseTopic(
-                    error_code=topic.error_code,
-                    name=topic.name,
-                    partitions=tuple(_partition_metadata),
-                )
-                _topics.append(_topic)
-            _response = metadata_v0.response.MetadataResponse(
-                brokers=(_broker,), topics=tuple(_topics)
-            )
-            await callback(_response)
-
-        elif api_version == 1:
-            _broker = metadata_v1.response.MetadataResponseBroker(
-                node_id=broker.node_id,
-                host=broker.host,
-                port=broker.port,
-                rack=broker.rack,
-            )
-            _topics = []
-            for topic in topics:
-                _partition_metadata = []
-                for partition in topic.partitions:
-                    _partition = metadata_v1.response.MetadataResponsePartition(
-                        error_code=partition.error_code,
-                        partition_index=partition.partition_index,
-                        leader_id=partition.leader_id,
-                        replica_nodes=partition.replica_nodes,
-                        isr_nodes=partition.isr_nodes,
-                    )
-                    _partition_metadata.append(_partition)
-                _topic = metadata_v1.response.MetadataResponseTopic(
-                    error_code=topic.error_code,
-                    name=topic.name,
-                    is_internal=topic.is_internal,
-                    partitions=tuple(_partition_metadata),
-                )
-                _topics.append(_topic)
-            _response = metadata_v1.response.MetadataResponse(
-                brokers=(_broker,),
-                topics=tuple(_topics),
-                controller_id=BrokerId(_broker.node_id),
-            )
-            await callback(_response)
-
-        elif api_version == 2:
-            _broker = metadata_v2.response.MetadataResponseBroker(
-                node_id=broker.node_id,
-                host=broker.host,
-                port=broker.port,
-                rack=broker.rack,
-            )
-            _topics = []
-            for topic in topics:
-                _partition_metadata = []
-                for partition in topic.partitions:
-                    _partition = metadata_v2.response.MetadataResponsePartition(
-                        error_code=partition.error_code,
-                        partition_index=partition.partition_index,
-                        leader_id=partition.leader_id,
-                        replica_nodes=partition.replica_nodes,
-                        isr_nodes=partition.isr_nodes,
-                    )
-                    _partition_metadata.append(_partition)
-                _topic = metadata_v2.response.MetadataResponseTopic(
-                    error_code=topic.error_code,
-                    name=topic.name,
-                    is_internal=topic.is_internal,
-                    partitions=tuple(_partition_metadata),
-                )
-                _topics.append(_topic)
-            _response = metadata_v2.response.MetadataResponse(
-                brokers=(_broker,),
-                topics=tuple(_topics),
-                controller_id=BrokerId(_broker.node_id),
-                cluster_id=response.cluster_id,
-            )
-            await callback(_response)
-
-        elif api_version == 3:
-            _broker = metadata_v3.response.MetadataResponseBroker(
-                node_id=broker.node_id,
-                host=broker.host,
-                port=broker.port,
-                rack=broker.rack,
-            )
-            _topics = []
-            for topic in topics:
-                _partition_metadata = []
-                for partition in topic.partitions:
-                    _partition = metadata_v3.response.MetadataResponsePartition(
-                        error_code=partition.error_code,
-                        partition_index=partition.partition_index,
-                        leader_id=partition.leader_id,
-                        replica_nodes=partition.replica_nodes,
-                        isr_nodes=partition.isr_nodes,
-                    )
-                    _partition_metadata.append(_partition)
-                _topic = metadata_v3.response.MetadataResponseTopic(
-                    error_code=topic.error_code,
-                    name=topic.name,
-                    is_internal=topic.is_internal,
-                    partitions=tuple(_partition_metadata),
-                )
-                _topics.append(_topic)
-            _response = metadata_v3.response.MetadataResponse(
-                brokers=(_broker,),
-                topics=tuple(_topics),
-                controller_id=BrokerId(_broker.node_id),
-                cluster_id=response.cluster_id,
-                throttle_time=response.throttle_time,
-            )
-            await callback(_response)
-
-        elif api_version == 4:
-            _broker = metadata_v4.response.MetadataResponseBroker(
-                node_id=broker.node_id,
-                host=broker.host,
-                port=broker.port,
-                rack=broker.rack,
-            )
-            _topics = []
-            for topic in topics:
-                _partition_metadata = []
-                for partition in topic.partitions:
-                    _partition = metadata_v4.response.MetadataResponsePartition(
-                        error_code=partition.error_code,
-                        partition_index=partition.partition_index,
-                        leader_id=partition.leader_id,
-                        replica_nodes=partition.replica_nodes,
-                        isr_nodes=partition.isr_nodes,
-                    )
-                    _partition_metadata.append(_partition)
-                _topic = metadata_v4.response.MetadataResponseTopic(
-                    error_code=topic.error_code,
-                    name=topic.name,
-                    is_internal=topic.is_internal,
-                    partitions=tuple(_partition_metadata),
-                )
-                _topics.append(_topic)
-            _response = metadata_v4.response.MetadataResponse(
-                brokers=(_broker,),
-                topics=tuple(_topics),
-                controller_id=BrokerId(_broker.node_id),
-                cluster_id=response.cluster_id,
-                throttle_time=response.throttle_time,
-            )
-            await callback(_response)
-
-        elif api_version == 5:
-            _broker = metadata_v5.response.MetadataResponseBroker(
-                node_id=broker.node_id,
-                host=broker.host,
-                port=broker.port,
-                rack=broker.rack,
-            )
-            _topics = []
-            for topic in topics:
-                _partition_metadata = []
-                for partition in topic.partitions:
-                    _partition = metadata_v5.response.MetadataResponsePartition(
-                        error_code=partition.error_code,
-                        partition_index=partition.partition_index,
-                        leader_id=partition.leader_id,
-                        replica_nodes=partition.replica_nodes,
-                        isr_nodes=partition.isr_nodes,
-                        offline_replicas=partition.offline_replicas,
-                    )
-                    _partition_metadata.append(_partition)
-                _topic = metadata_v5.response.MetadataResponseTopic(
-                    error_code=topic.error_code,
-                    name=topic.name,
-                    is_internal=topic.is_internal,
-                    partitions=tuple(_partition_metadata),
-                )
-                _topics.append(_topic)
-            _response = metadata_v5.response.MetadataResponse(
-                brokers=(_broker,),
-                topics=tuple(_topics),
-                controller_id=BrokerId(_broker.node_id),
-                cluster_id=response.cluster_id,
-                throttle_time=response.throttle_time,
-            )
-            await callback(_response)
-
-        elif api_version == 6:
-            await callback(response)
-
-        else:
-            # unsupported - should be an error response
-            pass
-
-    def metadata_request_error_response(
-        self,
-        error_code: ErrorCode,
-        error_message: str,
-        req: MetadataRequest,
-        api_version: int,
-    ) -> MetadataResponse:
-        # there's no point in returning brokers because there's no error code
-        # similarly there's no point in populating the topic partitions
-        # just populate the topics with the name and the error code
-        # because the typing is weird, the req and api_version might not match
-        mod = load_payload_module(3, api_version, EntityType.response)
-        response_topic_class = mod.MetadataResponseTopic
-        response_class = mod.MetadataResponse
-        _topics = []
-        for topic in req.topics:
-            _topic = response_topic_class(name=topic.name, error_code=error_code)
-            _topics.append(_topic)
-
-        return response_class(brokers=(), topics=tuple(_topics))
-
-    async def handle_api_versions_request(
-        self,
+async def handle_api_versions(
+        handler: KafkaHandler,
         header: ApiVersionsRequestHeader,
         req: ApiVersionsRequest,
         api_version: int,
-        callback: Callable[[ApiVersionsResponse], Any],
-    ):
-        versions = tuple(
-            api_v4.response.ApiVersion(
-                api_key=i16(api_key), min_version=i16(min_ver), max_version=i16(max_ver)
-            )
-            for api_key, (min_ver, max_ver) in api_compatibility.items()
-        )
+        respond: Callable[[ApiVersionsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_api_versions_request(header, req, api_version, respond)
 
-        response = api_v4.response.ApiVersionsResponse(
-            error_code=ErrorCode.none,
-            api_keys=versions,
-            throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
-            supported_features=(),
-            finalized_features_epoch=i64(-1),
-            finalized_features=(),
-            zk_migration_ready=False,
-        )
-        if api_version == 0:
-            _versions = tuple(
-                api_v0.response.ApiVersion(
-                    api_key=_version.api_key,
-                    min_version=_version.min_version,
-                    max_version=_version.max_version,
-                )
-                for _version in response.api_keys
-            )
-            _response = api_v0.response.ApiVersionsResponse(
-                error_code=response.error_code, api_keys=_versions
-            )
-            await callback(_response)
-        elif api_version == 1:
-            _versions = tuple(
-                api_v1.response.ApiVersion(
-                    api_key=_version.api_key,
-                    min_version=_version.min_version,
-                    max_version=_version.max_version,
-                )
-                for _version in response.api_keys
-            )
-            _response = api_v1.response.ApiVersionsResponse(
-                error_code=response.error_code,
-                api_keys=_versions,
-                throttle_time=response.throttle_time,
-            )
-            await callback(_response)
-        elif api_version == 2:
-            _versions = tuple(
-                api_v2.response.ApiVersion(
-                    api_key=_version.api_key,
-                    min_version=_version.min_version,
-                    max_version=_version.max_version,
-                )
-                for _version in response.api_keys
-            )
-            _response = api_v2.response.ApiVersionsResponse(
-                error_code=response.error_code,
-                api_keys=_versions,
-                throttle_time=response.throttle_time,
-            )
-            await callback(_response)
-        elif api_version == 3:
-            _versions = tuple(
-                api_v3.response.ApiVersion(
-                    api_key=_version.api_key,
-                    min_version=_version.min_version,
-                    max_version=_version.max_version,
-                )
-                for _version in response.api_keys
-            )
-            _response = api_v3.response.ApiVersionsResponse(
-                error_code=response.error_code,
-                api_keys=_versions,
-                throttle_time=response.throttle_time,
-                supported_features=response.supported_features,
-                finalized_features_epoch=response.finalized_features_epoch,
-                finalized_features=response.finalized_features,
-                zk_migration_ready=response.zk_migration_ready,
-            )
-            await callback(_response)
-        elif api_version == 4:
-            await callback(response)
-        else:
-            log.error(f"unsupported api versions version: {api_version}")
 
-    def api_versions_request_error_response(
-        self,
-        error_code: ErrorCode,
-        error_message: str,
-        req: ApiVersionsRequest,
-        api_version: int,
-    ) -> ApiVersionsResponse:
-        mod = load_payload_module(18, api_version, EntityType.response)
-        return mod.ApiVersionsResponse(
-            error_code=error_code,
-            api_keys=(),
-        )
-
-    async def handle_create_topics_request(
-        self,
+async def handle_create_topics(
+        handler: KafkaHandler,
         header: CreateTopicsRequestHeader,
         req: CreateTopicsRequest,
         api_version: int,
-        callback: Callable[[CreateTopicsResponse], Any],
-    ):
-        results = []
+        respond: Callable[[CreateTopicsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_create_topics_request(header, req, api_version, respond)
 
-        for topic in req.topics:
-            log.info(
-                "create_topic", topic=topic.name, num_partitions=topic.num_partitions
-            )
 
-            result = create_topics_v7.response.CreatableTopicResult(
-                name=topic.name,
-                topic_id=uuid.uuid4(),
-                error_code=ErrorCode.none,
-                error_message=None,
-                topic_config_error_code=i16(0),
-                num_partitions=i32(topic.num_partitions),
-                replication_factor=i16(topic.replication_factor),
-                configs=None,  # configs not returned
-            )
-            results.append(result)
-
-        response = CreateTopicsResponse(
-            throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
-            topics=tuple(results),
-        )
-        await callback(response)
-
-    def create_topics_request_error_response(
-        self,
-        error_code: ErrorCode,
-        error_message: str,
-        req: CreateTopicsRequest,
-        api_version: int,
-    ) -> CreateTopicsResponse:
-        mod = load_payload_module(0, api_version, EntityType.response)
-        results = []
-
-        for topic in req.topics:
-            result = mod.CreatableTopicResult(
-                name=topic.name,
-                topic_id=None,
-                error_code=error_code,
-                error_message=error_message,
-                topic_config_error_code=i16(0),
-                num_partitions=i32(-1),
-                replication_factor=i16(-1),
-                configs=None,
-            )
-            results.append(result)
-
-        return mod.CreateTopicsResponse(
-            throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
-            topics=tuple(results),
-        )
-
-    async def handle_fetch_request(
-        self,
+async def handle_fetch(
+        handler: KafkaHandler,
         header: FetchRequestHeader,
         req: FetchRequest,
         api_version: int,
-        callback: Callable[[FetchResponse], Awaitable[None]],
-    ) -> FetchResponse:
-        pass
+        respond: Callable[[FetchResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_fetch_request(header, req, api_version, respond)
 
-    def fetch_request_error_response(
-        self,
-        error_code: ErrorCode,
-        error_message: str,
-        req: FetchRequest,
+
+async def handle_delete_topics(
+        handler: KafkaHandler,
+        header: DeleteTopicsRequestHeader,
+        req: DeleteTopicsRequest,
         api_version: int,
-    ) -> FetchResponse:
-        mod = load_payload_module(1, api_version, EntityType.response)
-        responses = []
-        for i, topic in enumerate(req.topics):
-            partition_data = []
-            for j, partition in enumerate(topic.partitions):
-                partition_fetch_data = mod.PartitionData(
-                    partition_index=partition.partition,
-                    error_code=error_code,
-                )
-                partition_data.append(partition_fetch_data)
-            fetchable_topic_response = mod.FetchableTopicResponse(
-                topic=topic.topic,
-                partitions=tuple(partition_data)
-            )
-            responses.append(fetchable_topic_response)
-        resp = mod.FetchResponse(
-            responses=tuple(responses)
-        )
-        return resp
+        respond: Callable[[DeleteTopicsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_delete_topics_request(header, req, api_version, respond)
 
-    async def handle_delete_topics_request(
-            self,
-            header: DeleteTopicsRequestHeader,
-            req: DeleteTopicsRequest,
-            api_version: int,
-            callback: Callable[[DeleteTopicsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def delete_topics_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DeleteTopicsRequest,
-            api_version: int,
-    ) -> DeleteTopicsResponse:
-        pass
+async def handle_delete_acls(
+        handler: KafkaHandler,
+        header: DeleteAclsRequestHeader,
+        req: DeleteAclsRequest,
+        api_version: int,
+        respond: Callable[[DeleteAclsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_delete_acls_request(header, req, api_version, respond)
 
-    async def handle_delete_acls_request(
-            self,
-            header: DeleteAclsRequestHeader,
-            req: DeleteAclsRequest,
-            api_version: int,
-            callback: Callable[[DeleteAclsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def delete_acls_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DeleteAclsRequest,
-            api_version: int,
-    ) -> DeleteAclsResponse:
-        pass
+async def handle_delete_groups(
+        handler: KafkaHandler,
+        header: DeleteGroupsRequestHeader,
+        req: DeleteGroupsRequest,
+        api_version: int,
+        respond: Callable[[DeleteGroupsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_delete_groups_request(header, req, api_version, respond)
 
-    async def handle_delete_groups_request(
-            self,
-            header: DeleteGroupsRequestHeader,
-            req: DeleteGroupsRequest,
-            api_version: int,
-            callback: Callable[[DeleteGroupsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def delete_groups_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DeleteGroupsRequest,
-            api_version: int,
-    ) -> DeleteGroupsResponse:
-        pass
+async def handle_delete_records(
+        handler: KafkaHandler,
+        header: DeleteRecordsRequestHeader,
+        req: DeleteRecordsRequest,
+        api_version: int,
+        respond: Callable[[DeleteRecordsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_delete_records_request(header, req, api_version, respond)
 
-    async def handle_delete_records_request(
-            self,
-            header: DeleteRecordsRequestHeader,
-            req: DeleteRecordsRequest,
-            api_version: int,
-            callback: Callable[[DeleteRecordsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def delete_records_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DeleteRecordsRequest,
-            api_version: int,
-    ) -> DeleteRecordsResponse:
-        pass
+async def handle_delete_share_group_state(
+        handler: KafkaHandler,
+        header: DeleteShareGroupStateRequestHeader,
+        req: DeleteShareGroupStateRequest,
+        api_version: int,
+        respond: Callable[[DeleteShareGroupStateResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_delete_share_group_state_request(header, req, api_version, respond)
 
-    async def handle_delete_share_group_state_request(
-            self,
-            header: DeleteShareGroupStateRequestHeader,
-            req: DeleteShareGroupStateRequest,
-            api_version: int,
-            callback: Callable[[DeleteShareGroupStateResponse], Awaitable[None]],
-    ):
-        pass
 
-    def delete_share_group_state_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DeleteShareGroupStateRequest,
-            api_version: int,
-    ) -> DeleteShareGroupStateResponse:
-        pass
+async def handle_describe_acls(
+        handler: KafkaHandler,
+        header: DescribeAclsRequestHeader,
+        req: DescribeAclsRequest,
+        api_version: int,
+        respond: Callable[[DescribeAclsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_acls_request(header, req, api_version, respond)
 
-    async def handle_describe_acls_request(
-            self,
-            header: DescribeAclsRequestHeader,
-            req: DescribeAclsRequest,
-            api_version: int,
-            callback: Callable[[DescribeAclsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def describe_acls_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DescribeAclsRequest,
-            api_version: int,
-    ) -> DescribeAclsResponse:
-        pass
+async def handle_describe_client_quotas(
+        handler: KafkaHandler,
+        header: DescribeClientQuotasRequestHeader,
+        req: DescribeClientQuotasRequest,
+        api_version: int,
+        respond: Callable[[DescribeClientQuotasResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_client_quotas_request(header, req, api_version, respond)
 
-    async def handle_describe_client_quotas_request(
-            self,
-            header: DescribeClientQuotasRequestHeader,
-            req: DescribeClientQuotasRequest,
-            api_version: int,
-            callback: Callable[[DescribeClientQuotasResponse], Awaitable[None]],
-    ):
-        pass
 
-    def describe_client_quotas_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DescribeClientQuotasRequest,
-            api_version: int,
-    ) -> DescribeClientQuotasResponse:
-        pass
+async def handle_describe_cluster(
+        handler: KafkaHandler,
+        header: DescribeClusterRequestHeader,
+        req: DescribeClusterRequest,
+        api_version: int,
+        respond: Callable[[DescribeClusterResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_cluster_request(header, req, api_version, respond)
 
-    async def handle_describe_cluster_request(
-            self,
-            header: DescribeClusterRequestHeader,
-            req: DescribeClusterRequest,
-            api_version: int,
-            callback: Callable[[DescribeClusterResponse], Awaitable[None]],
-    ):
-        pass
 
-    def describe_cluster_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DescribeClusterRequest,
-            api_version: int,
-    ) -> DescribeClusterResponse:
-        pass
+async def handle_describe_configs(
+        handler: KafkaHandler,
+        header: DescribeConfigsRequestHeader,
+        req: DescribeConfigsRequest,
+        api_version: int,
+        respond: Callable[[DescribeConfigsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_configs_request(header, req, api_version, respond)
 
-    async def handle_describe_configs_request(
-            self,
-            header: DescribeConfigsRequestHeader,
-            req: DescribeConfigsRequest,
-            api_version: int,
-            callback: Callable[[DescribeConfigsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def describe_configs_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DescribeConfigsRequest,
-            api_version: int,
-    ) -> DescribeConfigsResponse:
-        pass
+async def handle_describe_delegation_token(
+        handler: KafkaHandler,
+        header: DescribeDelegationTokenRequestHeader,
+        req: DescribeDelegationTokenRequest,
+        api_version: int,
+        respond: Callable[[DescribeDelegationTokenResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_delegation_token_request(header, req, api_version, respond)
 
-    async def handle_describe_delegation_token_request(
-            self,
-            header: DescribeDelegationTokenRequestHeader,
-            req: DescribeDelegationTokenRequest,
-            api_version: int,
-            callback: Callable[[DescribeDelegationTokenResponse], Awaitable[None]],
-    ):
-        pass
 
-    def describe_delegation_token_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DescribeDelegationTokenRequest,
-            api_version: int,
-    ) -> DescribeDelegationTokenResponse:
-        pass
+async def handle_describe_groups(
+        handler: KafkaHandler,
+        header: DescribeGroupsRequestHeader,
+        req: DescribeGroupsRequest,
+        api_version: int,
+        respond: Callable[[DescribeGroupsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_groups_request(header, req, api_version, respond)
 
-    async def handle_describe_groups_request(
-            self,
-            header: DescribeGroupsRequestHeader,
-            req: DescribeGroupsRequest,
-            api_version: int,
-            callback: Callable[[DescribeGroupsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def describe_groups_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: DescribeGroupsRequest,
-            api_version: int,
-    ) -> DescribeGroupsResponse:
-        pass
+async def handle_describe_log_dirs(
+        handler: KafkaHandler,
+        header: DescribeLogDirsRequestHeader,
+        req: DescribeLogDirsRequest,
+        api_version: int,
+        respond: Callable[[DescribeLogDirsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_log_dirs_request(header, req, api_version, respond)
 
-    async def handle_add_offsets_to_txn_request(
-            self,
-            header: AddOffsetsToTxnRequestHeader,
-            req: AddOffsetsToTxnRequest,
-            api_version: int,
-            callback: Callable[[AddOffsetsToTxnResponse], Awaitable[None]],
-    ):
-        pass
 
-    def add_offsets_to_txn_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AddOffsetsToTxnRequest,
-            api_version: int,
-    ) -> AddOffsetsToTxnResponse:
-        pass
+async def handle_describe_producers(
+        handler: KafkaHandler,
+        header: DescribeProducersRequestHeader,
+        req: DescribeProducersRequest,
+        api_version: int,
+        respond: Callable[[DescribeProducersResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_producers_request(header, req, api_version, respond)
 
-    async def handle_add_partitions_to_txn_request(
-            self,
-            header: AddPartitionsToTxnRequestHeader,
-            req: AddPartitionsToTxnRequest,
-            api_version: int,
-            callback: Callable[[AddPartitionsToTxnResponse], Awaitable[None]],
-    ):
-        pass
 
-    def add_partitions_to_txn_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AddPartitionsToTxnRequest,
-            api_version: int,
-    ) -> AddPartitionsToTxnResponse:
-        pass
+async def handle_describe_quorum(
+        handler: KafkaHandler,
+        header: DescribeQuorumRequestHeader,
+        req: DescribeQuorumRequest,
+        api_version: int,
+        respond: Callable[[DescribeQuorumResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_quorum_request(header, req, api_version, respond)
 
-    async def handle_alter_client_quotas_request(
-            self,
-            header: AlterClientQuotasRequestHeader,
-            req: AlterClientQuotasRequest,
-            api_version: int,
-            callback: Callable[[AlterClientQuotasResponse], Awaitable[None]],
-    ):
-        pass
 
-    def alter_client_quotas_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AlterClientQuotasRequest,
-            api_version: int,
-    ) -> AlterClientQuotasResponse:
-        pass
+async def handle_describe_topic_partitions(
+        handler: KafkaHandler,
+        header: DescribeTopicPartitionsRequestHeader,
+        req: DescribeTopicPartitionsRequest,
+        api_version: int,
+        respond: Callable[[DescribeTopicPartitionsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_topic_partitions_request(header, req, api_version, respond)
 
-    async def handle_alter_configs_request(
-            self,
-            header: AlterConfigsRequestHeader,
-            req: AlterConfigsRequest,
-            api_version: int,
-            callback: Callable[[AlterConfigsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def alter_configs_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AlterConfigsRequest,
-            api_version: int,
-    ) -> AlterConfigsResponse:
-        pass
+async def handle_describe_transactions(
+        handler: KafkaHandler,
+        header: DescribeTransactionsRequestHeader,
+        req: DescribeTransactionsRequest,
+        api_version: int,
+        respond: Callable[[DescribeTransactionsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_transactions_request(header, req, api_version, respond)
 
-    async def handle_alter_partition_request(
-            self,
-            header: AlterPartitionRequestHeader,
-            req: AlterPartitionRequest,
-            api_version: int,
-            callback: Callable[[AlterPartitionResponse], Awaitable[None]],
-    ):
-        pass
 
-    def alter_partition_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AlterPartitionRequest,
-            api_version: int,
-    ) -> AlterPartitionResponse:
-        pass
+async def handle_describe_user_scram_credentials(
+        handler: KafkaHandler,
+        header: DescribeUserScramCredentialsRequestHeader,
+        req: DescribeUserScramCredentialsRequest,
+        api_version: int,
+        respond: Callable[[DescribeUserScramCredentialsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_describe_user_scram_credentials_request(header, req, api_version, respond)
 
-    async def handle_alter_partition_reassignments_request(
-            self,
-            header: AlterPartitionReassignmentsRequestHeader,
-            req: AlterPartitionReassignmentsRequest,
-            api_version: int,
-            callback: Callable[[AlterPartitionReassignmentsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def alter_partition_reassignments_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AlterPartitionReassignmentsRequest,
-            api_version: int,
-    ) -> AlterPartitionReassignmentsResponse:
-        pass
+async def handle_elect_leaders(
+        handler: KafkaHandler,
+        header: ElectLeadersRequestHeader,
+        req: ElectLeadersRequest,
+        api_version: int,
+        respond: Callable[[ElectLeadersResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_elect_leaders_request(header, req, api_version, respond)
 
-    async def handle_alter_replica_log_dirs_request(
-            self,
-            header: AlterReplicaLogDirsRequestHeader,
-            req: AlterReplicaLogDirsRequest,
-            api_version: int,
-            callback: Callable[[AlterReplicaLogDirsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def alter_replica_log_dirs_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AlterReplicaLogDirsRequest,
-            api_version: int,
-    ) -> AlterReplicaLogDirsResponse:
-        pass
+async def handle_end_quorum_epoch(
+        handler: KafkaHandler,
+        header: EndQuorumEpochRequestHeader,
+        req: EndQuorumEpochRequest,
+        api_version: int,
+        respond: Callable[[EndQuorumEpochResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_end_quorum_epoch_request(header, req, api_version, respond)
 
-    async def handle_alter_user_scram_credentials_request(
-            self,
-            header: AlterUserScramCredentialsRequestHeader,
-            req: AlterUserScramCredentialsRequest,
-            api_version: int,
-            callback: Callable[[AlterUserScramCredentialsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def alter_user_scram_credentials_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AlterUserScramCredentialsRequest,
-            api_version: int,
-    ) -> AlterUserScramCredentialsResponse:
-        pass
+async def handle_end_txn(
+        handler: KafkaHandler,
+        header: EndTxnRequestHeader,
+        req: EndTxnRequest,
+        api_version: int,
+        respond: Callable[[EndTxnResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_end_txn_request(header, req, api_version, respond)
 
-    async def handle_assign_replicas_to_dirs_request(
-            self,
-            header: AssignReplicasToDirsRequestHeader,
-            req: AssignReplicasToDirsRequest,
-            api_version: int,
-            callback: Callable[[AssignReplicasToDirsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def assign_replicas_to_dirs_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AssignReplicasToDirsRequest,
-            api_version: int,
-    ) -> AssignReplicasToDirsResponse:
-        pass
+async def handle_envelope(
+        handler: KafkaHandler,
+        header: EnvelopeRequestHeader,
+        req: EnvelopeRequest,
+        api_version: int,
+        respond: Callable[[EnvelopeResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_envelope_request(header, req, api_version, respond)
 
-    async def handle_begin_quorum_epoch_request(
-            self,
-            header: BeginQuorumEpochRequestHeader,
-            req: BeginQuorumEpochRequest,
-            api_version: int,
-            callback: Callable[[BeginQuorumEpochResponse], Awaitable[None]],
-    ):
-        pass
 
-    def begin_quorum_epoch_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: BeginQuorumEpochRequest,
-            api_version: int,
-    ) -> BeginQuorumEpochResponse:
-        pass
+async def handle_controlled_shutdown(
+        handler: KafkaHandler,
+        header: ControlledShutdownRequestHeader,
+        req: ControlledShutdownRequest,
+        api_version: int,
+        respond: Callable[[ControlledShutdownResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_controlled_shutdown_request(header, req, api_version, respond)
 
-    async def handle_broker_heartbeat_request(
-            self,
-            header: BrokerHeartbeatRequestHeader,
-            req: BrokerHeartbeatRequest,
-            api_version: int,
-            callback: Callable[[BrokerHeartbeatResponse], Awaitable[None]],
-    ):
-        pass
 
-    def broker_heartbeat_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: BrokerHeartbeatRequest,
-            api_version: int,
-    ) -> BrokerHeartbeatResponse:
-        pass
+def error_produce(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ProduceRequest,
+        api_version: int,
+) -> ProduceResponse:
+    return handler.produce_request_error_response(code, msg, req, api_version)
 
-    async def handle_broker_registration_request(
-            self,
-            header: BrokerRegistrationRequestHeader,
-            req: BrokerRegistrationRequest,
-            api_version: int,
-            callback: Callable[[BrokerRegistrationResponse], Awaitable[None]],
-    ):
-        pass
 
-    def broker_registration_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: BrokerRegistrationRequest,
-            api_version: int,
-    ) -> BrokerRegistrationResponse:
-        pass
+async def handle_add_offsets_to_txn(
+        handler: KafkaHandler,
+        header: AddOffsetsToTxnRequestHeader,
+        req: AddOffsetsToTxnRequest,
+        api_version: int,
+        respond: Callable[[AddOffsetsToTxnResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_add_offsets_to_txn_request(header, req, api_version, respond)
 
-    async def handle_consumer_group_describe_request(
-            self,
-            header: ConsumerGroupDescribeRequestHeader,
-            req: ConsumerGroupDescribeRequest,
-            api_version: int,
-            callback: Callable[[ConsumerGroupDescribeResponse], Awaitable[None]],
-    ):
-        pass
 
-    def consumer_group_describe_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: ConsumerGroupDescribeRequest,
-            api_version: int,
-    ) -> ConsumerGroupDescribeResponse:
-        pass
+async def handle_add_partitions_to_txn(
+        handler: KafkaHandler,
+        header: AddPartitionsToTxnRequestHeader,
+        req: AddPartitionsToTxnRequest,
+        api_version: int,
+        respond: Callable[[AddPartitionsToTxnResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_add_partitions_to_txn_request(
+        header, req, api_version, respond
+    )
 
-    async def handle_consumer_group_heartbeat_request(
-            self,
-            header: ConsumerGroupHeartbeatRequestHeader,
-            req: ConsumerGroupHeartbeatRequest,
-            api_version: int,
-            callback: Callable[[ConsumerGroupHeartbeatResponse], Awaitable[None]],
-    ):
-        pass
 
-    def consumer_group_heartbeat_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: ConsumerGroupHeartbeatRequest,
-            api_version: int,
-    ) -> ConsumerGroupHeartbeatResponse:
-        pass
+async def handle_alter_client_quotas(
+        handler: KafkaHandler,
+        header: AlterClientQuotasRequestHeader,
+        req: AlterClientQuotasRequest,
+        api_version: int,
+        respond: Callable[[AlterClientQuotasResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_client_quotas_request(header, req, api_version, respond)
 
-    async def handle_controlled_shutdown_request(
-            self,
-            header: ControlledShutdownRequestHeader,
-            req: ControlledShutdownRequest,
-            api_version: int,
-            callback: Callable[[ControlledShutdownResponse], Awaitable[None]],
-    ):
-        pass
 
-    def controlled_shutdown_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: ControlledShutdownRequest,
-            api_version: int,
-    ) -> ControlledShutdownResponse:
-        pass
+async def handle_alter_configs(
+        handler: KafkaHandler,
+        header: AlterConfigsRequestHeader,
+        req: AlterConfigsRequest,
+        api_version: int,
+        respond: Callable[[AlterConfigsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_configs_request(header, req, api_version, respond)
 
-    async def handle_controller_registration_request(
-            self,
-            header: ControllerRegistrationRequestHeader,
-            req: ControllerRegistrationRequest,
-            api_version: int,
-            callback: Callable[[ControllerRegistrationResponse], Awaitable[None]],
-    ):
-        pass
 
-    def controller_registration_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: ControllerRegistrationRequest,
-            api_version: int,
-    ) -> ControllerRegistrationResponse:
-        pass
+async def handle_alter_partition(
+        handler: KafkaHandler,
+        header: AlterPartitionRequestHeader,
+        req: AlterPartitionRequest,
+        api_version: int,
+        respond: Callable[[AlterPartitionResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_partition_request(header, req, api_version, respond)
 
-    async def handle_add_raft_voter_request(
-            self,
-            header: AddRaftVoterRequestHeader,
-            req: AddRaftVoterRequest,
-            api_version: int,
-            callback: Callable[[AddRaftVoterResponse], Awaitable[None]],
-    ):
-        pass
 
-    def add_raft_voter_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AddRaftVoterRequest,
-            api_version: int,
-    ) -> AddRaftVoterResponse:
-        pass
+async def handle_alter_partition_reassignments(
+        handler: KafkaHandler,
+        header: AlterPartitionReassignmentsRequestHeader,
+        req: AlterPartitionReassignmentsRequest,
+        api_version: int,
+        respond: Callable[[AlterPartitionReassignmentsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_partition_reassignments_request(header, req, api_version, respond)
 
-    async def handle_allocate_producer_ids_request(
-            self,
-            header: AllocateProducerIdsRequestHeader,
-            req: AllocateProducerIdsRequest,
-            api_version: int,
-            callback: Callable[[AllocateProducerIdsResponse], Awaitable[None]],
-    ):
-        pass
 
-    def allocate_producer_ids_request_error_response(
-            self,
-            error_code: ErrorCode,
-            error_message: str,
-            req: AllocateProducerIdsRequest,
-            api_version: int,
-    ) -> AllocateProducerIdsResponse:
-        pass
+async def handle_alter_replica_log_dirs(
+        handler: KafkaHandler,
+        header: AlterReplicaLogDirsRequestHeader,
+        req: AlterReplicaLogDirsRequest,
+        api_version: int,
+        respond: Callable[[AlterReplicaLogDirsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_replica_log_dirs_request(header, req, api_version, respond)
 
-    async def handle_create_delegation_token_request(
-        self,
+
+async def handle_alter_user_scram_credentials(
+        handler: KafkaHandler,
+        header: AlterUserScramCredentialsRequestHeader,
+        req: AlterUserScramCredentialsRequest,
+        api_version: int,
+        respond: Callable[[AlterUserScramCredentialsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_alter_user_scram_credentials_request(header, req, api_version, respond)
+
+
+async def handle_assign_replicas_to_dirs(
+        handler: KafkaHandler,
+        header: AssignReplicasToDirsRequestHeader,
+        req: AssignReplicasToDirsRequest,
+        api_version: int,
+        respond: Callable[[AssignReplicasToDirsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_assign_replicas_to_dirs_request(header, req, api_version, respond)
+
+
+async def handle_begin_quorum_epoch(
+        handler: KafkaHandler,
+        header: BeginQuorumEpochRequestHeader,
+        req: BeginQuorumEpochRequest,
+        api_version: int,
+        respond: Callable[[BeginQuorumEpochResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_begin_quorum_epoch_request(header, req, api_version, respond)
+
+
+async def handle_broker_heartbeat(
+        handler: KafkaHandler,
+        header: BrokerHeartbeatRequestHeader,
+        req: BrokerHeartbeatRequest,
+        api_version: int,
+        respond: Callable[[BrokerHeartbeatResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_broker_heartbeat_request(header, req, api_version, respond)
+
+
+async def handle_broker_registration(
+        handler: KafkaHandler,
+        header: BrokerRegistrationRequestHeader,
+        req: BrokerRegistrationRequest,
+        api_version: int,
+        respond: Callable[[BrokerRegistrationResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_broker_registration_request(header, req, api_version, respond)
+
+
+async def handle_consumer_group_describe(
+        handler: KafkaHandler,
+        header: ConsumerGroupDescribeRequestHeader,
+        req: ConsumerGroupDescribeRequest,
+        api_version: int,
+        respond: Callable[[ConsumerGroupDescribeResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_consumer_group_describe_request(header, req, api_version, respond)
+
+
+async def handle_consumer_group_heartbeat(
+        handler: KafkaHandler,
+        header: ConsumerGroupHeartbeatRequestHeader,
+        req: ConsumerGroupHeartbeatRequest,
+        api_version: int,
+        respond: Callable[[ConsumerGroupHeartbeatResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_consumer_group_heartbeat_request(header, req, api_version, respond)
+
+
+async def handle_controller_registration(
+        handler: KafkaHandler,
+        header: ControllerRegistrationRequestHeader,
+        req: ControllerRegistrationRequest,
+        api_version: int,
+        respond: Callable[[ControllerRegistrationResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_controller_registration_request(header, req, api_version, respond)
+
+
+async def handle_add_raft_voter(
+        handler: KafkaHandler,
+        header: AddRaftVoterRequestHeader,
+        req: AddRaftVoterRequest,
+        api_version: int,
+        respond: Callable[[AddRaftVoterResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_add_raft_voter_request(header, req, api_version, respond)
+
+async def handle_allocate_producer_ids(
+        handler: KafkaHandler,
+        header: AllocateProducerIdsRequestHeader,
+        req: AllocateProducerIdsRequest,
+        api_version: int,
+        respond: Callable[[AllocateProducerIdsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_allocate_producer_ids_request(header, req, api_version, respond)
+
+
+async def handle_create_acls(
+        handler: KafkaHandler,
+        header: CreateAclsRequestHeader,
+        req: CreateAclsRequest,
+        api_version: int,
+        respond: Callable[[CreateAclsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_create_acls_request(header, req, api_version, respond)
+
+
+async def handle_create_delegation_token(
+        handler: KafkaHandler,
         header: CreateDelegationTokenRequestHeader,
         req: CreateDelegationTokenRequest,
         api_version: int,
-        callback: Callable[[CreateDelegationTokenResponse], Awaitable[None]],
-    ):
-        pass
+        respond: Callable[[CreateDelegationTokenResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_create_delegation_token_request(header, req, api_version, respond)
 
-    def create_delegation_token_request_error_response(
-        self,
-        error_code: ErrorCode,
-        error_message: str,
-        req: CreateDelegationTokenRequest,
-        api_version: int,
-    ) -> CreateDelegationTokenResponse:
-        pass
 
-    async def handle_create_partitions_request(
-        self,
+async def handle_create_partitions(
+        handler: KafkaHandler,
         header: CreatePartitionsRequestHeader,
         req: CreatePartitionsRequest,
         api_version: int,
-        callback: Callable[[CreatePartitionsResponse], Awaitable[None]],
-    ):
-        pass
+        respond: Callable[[CreatePartitionsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_create_partitions_request(header, req, api_version, respond)
 
-    def create_partitions_request_error_response(
-        self,
-        error_code: ErrorCode,
-        error_message: str,
+
+def error_metadata(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: MetadataRequest,
+        api_version: int,
+) -> MetadataResponse:
+    return handler.metadata_request_error_response(code, msg, req, api_version)
+
+
+def error_api_versions(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ApiVersionsRequest,
+        api_version: int,
+) -> ApiVersionsResponse:
+    return handler.api_versions_request_error_response(code, msg, req, api_version)
+
+
+def error_create_topics(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: CreateTopicsRequest,
+        api_version: int,
+) -> CreateTopicsResponse:
+    return handler.create_topics_request_error_response(code, msg, req, api_version)
+
+
+def error_fetch(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: FetchRequest,
+        api_version: int,
+) -> FetchResponse:
+    return handler.fetch_request_error_response(code, msg, req, api_version)
+
+
+def error_delete_topics(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DeleteTopicsRequest,
+        api_version: int,
+) -> DeleteTopicsResponse:
+    return handler.delete_topics_request_error_response(code, msg, req, api_version)
+
+
+def error_delete_acls(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DeleteAclsRequest,
+        api_version: int,
+) -> DeleteAclsResponse:
+    return handler.delete_acls_request_error_response(code, msg, req, api_version)
+
+
+def error_delete_groups(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DeleteGroupsRequest,
+        api_version: int,
+) -> DeleteGroupsResponse:
+    return handler.delete_groups_request_error_response(code, msg, req, api_version)
+
+
+def error_delete_records(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DeleteRecordsRequest,
+        api_version: int,
+) -> DeleteRecordsResponse:
+    return handler.delete_records_request_error_response(code, msg, req, api_version)
+
+
+def error_delete_share_group_state(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DeleteShareGroupStateRequest,
+        api_version: int,
+) -> DeleteShareGroupStateResponse:
+    return handler.delete_share_group_state_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_acls(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeAclsRequest,
+        api_version: int,
+) -> DescribeAclsResponse:
+    return handler.describe_acls_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_client_quotas(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeClientQuotasRequest,
+        api_version: int,
+) -> DescribeClientQuotasResponse:
+    return handler.describe_client_quotas_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_cluster(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeClusterRequest,
+        api_version: int,
+) -> DescribeClusterResponse:
+    return handler.describe_cluster_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_configs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeConfigsRequest,
+        api_version: int,
+) -> DescribeConfigsResponse:
+    return handler.describe_configs_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_delegation_token(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeDelegationTokenRequest,
+        api_version: int,
+) -> DescribeDelegationTokenResponse:
+    return handler.describe_delegation_token_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_groups(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeGroupsRequest,
+        api_version: int,
+) -> DescribeGroupsResponse:
+    return handler.describe_groups_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_log_dirs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeLogDirsRequest,
+        api_version: int,
+) -> DescribeLogDirsResponse:
+    return handler.describe_log_dirs_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_producers(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeProducersRequest,
+        api_version: int,
+) -> DescribeProducersResponse:
+    return handler.describe_producers_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_quorum(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeQuorumRequest,
+        api_version: int,
+) -> DescribeQuorumResponse:
+    return handler.describe_quorum_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_topic_partitions(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeTopicPartitionsRequest,
+        api_version: int,
+) -> DescribeTopicPartitionsResponse:
+    return handler.describe_topic_partitions_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_transactions(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeTransactionsRequest,
+        api_version: int,
+) -> DescribeTransactionsResponse:
+    return handler.describe_transactions_request_error_response(code, msg, req, api_version)
+
+
+def error_describe_user_scram_credentials(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: DescribeUserScramCredentialsRequest,
+        api_version: int,
+) -> DescribeUserScramCredentialsResponse:
+    return handler.describe_user_scram_credentials_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_elect_leaders(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ElectLeadersRequest,
+        api_version: int,
+) -> ElectLeadersResponse:
+    return handler.elect_leaders_request_error_response(code, msg, req, api_version)
+
+
+def error_end_quorum_epoch(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: EndQuorumEpochRequest,
+        api_version: int,
+) -> EndQuorumEpochResponse:
+    return handler.end_quorum_epoch_request_error_response(code, msg, req, api_version)
+
+
+def error_end_txn(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: EndTxnRequest,
+        api_version: int,
+) -> EndTxnResponse:
+    return handler.end_txn_request_error_response(code, msg, req, api_version)
+
+
+def error_envelope(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: EnvelopeRequest,
+        api_version: int,
+) -> EnvelopeResponse:
+    return handler.envelope_request_error_response(code, msg, req, api_version)
+
+
+def error_controlled_shutdown(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ControlledShutdownRequest,
+        api_version: int,
+) -> ControlledShutdownResponse:
+    return handler.controlled_shutdown_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_add_offsets_to_txn(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AddOffsetsToTxnRequest,
+        api_version: int,
+) -> AddOffsetsToTxnResponse:
+    return handler.add_offsets_to_txn_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_add_partitions_to_txn(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AddPartitionsToTxnRequest,
+        api_version: int,
+) -> AddPartitionsToTxnResponse:
+    return handler.add_partitions_to_txn_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_client_quotas(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterClientQuotasRequest,
+        api_version: int,
+) -> AlterClientQuotasResponse:
+    return handler.alter_client_quotas_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_configs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterConfigsRequest,
+        api_version: int,
+) -> AlterConfigsResponse:
+    return handler.alter_configs_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_partition(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterPartitionRequest,
+        api_version: int,
+) -> AlterPartitionResponse:
+    return handler.alter_partition_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_partition_reassignments(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterPartitionReassignmentsRequest,
+        api_version: int,
+) -> AlterPartitionReassignmentsResponse:
+    return handler.alter_partition_reassignments_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_replica_log_dirs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterReplicaLogDirsRequest,
+        api_version: int,
+) -> AlterReplicaLogDirsResponse:
+    return handler.alter_replica_log_dirs_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_alter_user_scram_credentials(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AlterUserScramCredentialsRequest,
+        api_version: int,
+) -> AlterUserScramCredentialsResponse:
+    return handler.alter_user_scram_credentials_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_assign_replicas_to_dirs(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AssignReplicasToDirsRequest,
+        api_version: int,
+) -> AssignReplicasToDirsResponse:
+    return handler.assign_replicas_to_dirs_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_begin_quorum_epoch(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: BeginQuorumEpochRequest,
+        api_version: int,
+) -> BeginQuorumEpochResponse:
+    return handler.begin_quorum_epoch_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_broker_heartbeat(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: BrokerHeartbeatRequest,
+        api_version: int,
+) -> BrokerHeartbeatResponse:
+    return handler.broker_heartbeat_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_broker_registration(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: BrokerRegistrationRequest,
+        api_version: int,
+) -> BrokerRegistrationResponse:
+    return handler.broker_registration_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_consumer_group_describe(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ConsumerGroupDescribeRequest,
+        api_version: int,
+) -> ConsumerGroupDescribeResponse:
+    return handler.consumer_group_describe_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_consumer_group_heartbeat(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ConsumerGroupHeartbeatRequest,
+        api_version: int,
+) -> ConsumerGroupHeartbeatResponse:
+    return handler.consumer_group_heartbeat_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_controller_registration(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: ControllerRegistrationRequest,
+        api_version: int,
+) -> ControllerRegistrationResponse:
+    return handler.controller_registration_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_add_raft_voter(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AddRaftVoterRequest,
+        api_version: int,
+) -> AddRaftVoterResponse:
+    return handler.add_raft_voter_request_error_response(
+        code, msg, req, api_version
+    )
+
+def error_allocate_producer_ids(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: AllocateProducerIdsRequest,
+        api_version: int,
+) -> AllocateProducerIdsResponse:
+    return handler.allocate_producer_ids_request_error_response(code, msg, req, api_version)
+
+
+def error_create_acls(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: CreateAclsRequest,
+        api_version: int,
+) -> CreateAclsResponse:
+    return handler.create_acls_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_create_delegation_token(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: CreateDelegationTokenRequest,
+        api_version: int,
+) -> CreateDelegationTokenResponse:
+    return handler.create_delegation_token_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_create_partitions(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
         req: CreatePartitionsRequest,
         api_version: int,
-    ) -> CreatePartitionsResponse:
-        pass
+) -> CreatePartitionsResponse:
+    return handler.create_partitions_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+request_map: dict[int, RequestHandlerMeta] = {
+    PRODUCE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_produce,
+        error_response_func=error_produce,
+    ),
+    METADATA_API_KEY: RequestHandlerMeta(
+        handler_func=handle_metadata,
+        error_response_func=error_metadata,
+    ),
+    API_VERSIONS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_api_versions,
+        error_response_func=error_api_versions,
+    ),
+    CREATE_TOPICS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_create_topics,
+        error_response_func=error_create_topics,
+    ),
+    FETCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_fetch,
+        error_response_func=error_fetch,
+    ),
+    CONTROLLED_SHUTDOWN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_controlled_shutdown,
+        error_response_func=error_controlled_shutdown,
+    ),
+    DELETE_TOPICS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_delete_topics,
+        error_response_func=error_delete_topics,
+    ),
+    DELETE_ACLS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_delete_acls,
+        error_response_func=error_delete_acls,
+    ),
+    DELETE_GROUPS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_delete_groups,
+        error_response_func=error_delete_groups,
+    ),
+    DELETE_RECORDS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_delete_records,
+        error_response_func=error_delete_records,
+    ),
+    DELETE_SHARE_GROUP_STATE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_delete_share_group_state,
+        error_response_func=error_delete_share_group_state,
+    ),
+    DESCRIBE_ACLS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_acls,
+        error_response_func=error_describe_acls,
+    ),
+    DESCRIBE_CLIENT_QUOTAS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_client_quotas,
+        error_response_func=error_describe_client_quotas,
+    ),
+    DESCRIBE_CLUSTER_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_cluster,
+        error_response_func=error_describe_cluster,
+    ),
+    DESCRIBE_CONFIGS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_configs,
+        error_response_func=error_describe_configs,
+    ),
+    DESCRIBE_DELEGATION_TOKEN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_delegation_token,
+        error_response_func=error_describe_delegation_token,
+    ),
+    DESCRIBE_GROUPS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_groups,
+        error_response_func=error_describe_groups,
+    ),
+    DESCRIBE_LOG_DIRS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_log_dirs,
+        error_response_func=error_describe_log_dirs,
+    ),
+    DESCRIBE_PRODUCERS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_producers,
+        error_response_func=error_describe_producers,
+    ),
+    DESCRIBE_QUORUM_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_quorum,
+        error_response_func=error_describe_quorum,
+    ),
+    DESCRIBE_TOPIC_PARTITIONS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_topic_partitions,
+        error_response_func=error_describe_topic_partitions,
+    ),
+    DESCRIBE_TRANSACTIONS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_transactions,
+        error_response_func=error_describe_transactions,
+    ),
+    DESCRIBE_USER_SCRAM_CREDENTIALS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_describe_user_scram_credentials,
+        error_response_func=error_describe_user_scram_credentials,
+    ),
+    ELECT_LEADERS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_elect_leaders,
+        error_response_func=error_elect_leaders,
+    ),
+    END_QUORUM_EPOCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_end_quorum_epoch,
+        error_response_func=error_end_quorum_epoch,
+    ),
+    END_TXN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_end_txn,
+        error_response_func=error_end_txn,
+    ),
+    ENVELOPE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_envelope,
+        error_response_func=error_envelope,
+    ),
+    ADD_OFFSETS_TO_TXN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_add_offsets_to_txn,
+        error_response_func=error_add_offsets_to_txn,
+    ),
+    ADD_PARTITIONS_TO_TXN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_add_partitions_to_txn,
+        error_response_func=error_add_partitions_to_txn,
+    ),
+    ALTER_CLIENT_QUOTAS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_client_quotas,
+        error_response_func=error_alter_client_quotas,
+    ),
+    ALTER_CONFIGS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_configs,
+        error_response_func=error_alter_configs,
+    ),
+    ALTER_PARTITION_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_partition,
+        error_response_func=error_alter_partition,
+    ),
+    ALTER_PARTITION_REASSIGNMENTS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_partition_reassignments,
+        error_response_func=error_alter_partition_reassignments,
+    ),
+    ALTER_REPLICA_LOG_DIRS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_replica_log_dirs,
+        error_response_func=error_alter_replica_log_dirs,
+    ),
+    ALTER_USER_SCRAM_CREDENTIALS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_alter_user_scram_credentials,
+        error_response_func=error_alter_user_scram_credentials,
+    ),
+    ASSIGN_REPLICAS_TO_DIRS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_assign_replicas_to_dirs,
+        error_response_func=error_assign_replicas_to_dirs,
+    ),
+    BEGIN_QUORUM_EPOCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_begin_quorum_epoch,
+        error_response_func=error_begin_quorum_epoch,
+    ),
+    BROKER_HEARTBEAT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_broker_heartbeat,
+        error_response_func=error_broker_heartbeat,
+    ),
+    BROKER_REGISTRATION_API_KEY: RequestHandlerMeta(
+        handler_func=handle_broker_registration,
+        error_response_func=error_broker_registration,
+    ),
+    CONSUMER_GROUP_DESCRIBE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_consumer_group_describe,
+        error_response_func=error_consumer_group_describe,
+    ),
+    CONSUMER_GROUP_HEARTBEAT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_consumer_group_heartbeat,
+        error_response_func=error_consumer_group_heartbeat,
+    ),
+    CONTROLLER_REGISTRATION_API_KEY: RequestHandlerMeta(
+        handler_func=handle_controller_registration,
+        error_response_func=error_controller_registration,
+    ),
+    ADD_RAFT_VOTER_API_KEY: RequestHandlerMeta(
+        handler_func=handle_add_raft_voter,
+        error_response_func=error_add_raft_voter,
+    ),
+    CREATE_ACLS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_create_acls,
+        error_response_func=error_create_acls,
+    ),
+    CREATE_DELEGATION_TOKEN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_create_delegation_token,
+        error_response_func=error_create_delegation_token,
+    ),
+    CREATE_PARTITIONS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_create_partitions,
+        error_response_func=error_create_partitions,
+    )
+}
+
+
+async def handle_kafka_request(
+        api_key: int, buffer: bytes, handler: KafkaHandler, writer: StreamWriter
+):
+    if api_key not in request_map or api_key not in api_compatibility:
+        return
+
+    api_version = struct.unpack(">H", buffer[2:4])[
+        0
+    ]  # the api version is the next 2 bytes also big endian
+    buffer = io.BytesIO(buffer)
+
+    log.info(f"got api key {api_key} with api version {api_version}")
+
+    meta = request_map[api_key]
+    min_vers, max_vers = api_compatibility[api_key]
+
+    try:
+        req_cls = load_request_schema(api_key, api_version)
+        read_req = entity_reader(req_cls)
+        read_req_header = entity_reader(req_cls.__header_schema__)
+
+        req_header = read_req_header(buffer)
+        req = read_req(buffer)
+
+        resp_cls = load_response_schema(api_key, api_version)
+        write_resp = entity_writer(resp_cls)
+        write_resp_header = entity_writer(resp_cls.__header_schema__)
+
+        response_header = resp_cls.__header_schema__(
+            correlation_id=req_header.correlation_id
+        )
+
+        async def resp_func(resp: EntityType.response):
+            resp_buffer = io.BytesIO()
+            write_resp_header(resp_buffer, response_header)
+            write_resp(resp_buffer, resp)
+            resp_bytes = resp_buffer.getvalue()
+            writer.write(len(resp_bytes).to_bytes(4, "big") + resp_bytes)
+            await writer.drain()
+
+        if not _is_in_supported_range(api_version, min_vers, max_vers):
+            msg = f"supported versions for api key {api_key} are {min_vers} through {max_vers}"
+            error_resp = meta.error_response_func(
+                handler, ErrorCode.unsupported_version, msg, req, api_version
+            )
+            await resp_func(error_resp)
+            return
+
+        await meta.handler_func(handler, req_header, req, api_version, resp_func)
+
+    except Exception as e:
+        log.exception(
+            "failed to handle kafka request",
+            api_key=api_key,
+            version=api_version,
+            exception=e,
+        )
+
+
+def _is_in_supported_range(num: int, min_val: int, max_val: int) -> bool:
+    return min_val <= num <= max_val

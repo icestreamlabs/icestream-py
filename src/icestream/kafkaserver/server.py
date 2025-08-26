@@ -101,6 +101,46 @@ from icestream.kafkaserver.handlers.controller_registration import ControllerReg
     ControllerRegistrationRequestHeader, ControllerRegistrationResponse
 from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequest, DeleteTopicsRequestHeader, \
     DeleteTopicsResponse
+from icestream.kafkaserver.handlers.delete_acls import DeleteAclsRequest, DeleteAclsRequestHeader, \
+    DeleteAclsResponse
+from icestream.kafkaserver.handlers.delete_groups import DeleteGroupsRequest, DeleteGroupsRequestHeader, \
+    DeleteGroupsResponse
+from icestream.kafkaserver.handlers.delete_records import DeleteRecordsRequest, DeleteRecordsRequestHeader, \
+    DeleteRecordsResponse
+from icestream.kafkaserver.handlers.delete_share_group_state import DeleteShareGroupStateRequest, \
+    DeleteShareGroupStateRequestHeader, DeleteShareGroupStateResponse
+from icestream.kafkaserver.handlers.describe_acls import DescribeAclsRequest, DescribeAclsRequestHeader, \
+    DescribeAclsResponse
+from icestream.kafkaserver.handlers.describe_client_quotas import DescribeClientQuotasRequest, \
+    DescribeClientQuotasRequestHeader, DescribeClientQuotasResponse
+from icestream.kafkaserver.handlers.describe_cluster import DescribeClusterRequest, DescribeClusterRequestHeader, \
+    DescribeClusterResponse
+from icestream.kafkaserver.handlers.describe_configs import DescribeConfigsRequest, DescribeConfigsRequestHeader, \
+    DescribeConfigsResponse
+from icestream.kafkaserver.handlers.describe_delegation_token import DescribeDelegationTokenRequest, \
+    DescribeDelegationTokenRequestHeader, DescribeDelegationTokenResponse
+from icestream.kafkaserver.handlers.describe_groups import DescribeGroupsRequest, DescribeGroupsRequestHeader, \
+    DescribeGroupsResponse
+from icestream.kafkaserver.handlers.describe_log_dirs import DescribeLogDirsRequest, DescribeLogDirsRequestHeader, \
+    DescribeLogDirsResponse
+from icestream.kafkaserver.handlers.describe_producers import DescribeProducersRequest, DescribeProducersRequestHeader, \
+    DescribeProducersResponse
+from icestream.kafkaserver.handlers.describe_quorum import DescribeQuorumRequest, DescribeQuorumRequestHeader, \
+    DescribeQuorumResponse
+from icestream.kafkaserver.handlers.describe_topic_partitions import DescribeTopicPartitionsRequest, \
+    DescribeTopicPartitionsRequestHeader, DescribeTopicPartitionsResponse
+from icestream.kafkaserver.handlers.describe_transactions import DescribeTransactionsRequest, \
+    DescribeTransactionsRequestHeader, DescribeTransactionsResponse
+from icestream.kafkaserver.handlers.describe_user_scram_credentials import DescribeUserScramCredentialsRequest, \
+    DescribeUserScramCredentialsRequestHeader, DescribeUserScramCredentialsResponse
+from icestream.kafkaserver.handlers.elect_leaders import ElectLeadersRequest, ElectLeadersRequestHeader, \
+    ElectLeadersResponse
+from icestream.kafkaserver.handlers.end_quorum_epoch import EndQuorumEpochRequest, EndQuorumEpochRequestHeader, \
+    EndQuorumEpochResponse
+from icestream.kafkaserver.handlers.end_txn import EndTxnRequest, EndTxnRequestHeader, \
+    EndTxnResponse
+from icestream.kafkaserver.handlers.envelope import EnvelopeRequest, EnvelopeRequestHeader, \
+    EnvelopeResponse
 from icestream.kafkaserver.handlers.add_raft_voter import AddRaftVoterRequest, AddRaftVoterRequestHeader, \
     AddRaftVoterResponse
 from icestream.kafkaserver.handlers.allocate_producer_ids import AllocateProducerIdsRequest, \
@@ -1059,6 +1099,366 @@ class Connection(KafkaHandler):
             req: DeleteTopicsRequest,
             api_version: int,
     ) -> DeleteTopicsResponse:
+        pass
+
+    async def handle_delete_acls_request(
+            self,
+            header: DeleteAclsRequestHeader,
+            req: DeleteAclsRequest,
+            api_version: int,
+            callback: Callable[[DeleteAclsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_acls_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DeleteAclsRequest,
+            api_version: int,
+    ) -> DeleteAclsResponse:
+        pass
+
+    async def handle_delete_groups_request(
+            self,
+            header: DeleteGroupsRequestHeader,
+            req: DeleteGroupsRequest,
+            api_version: int,
+            callback: Callable[[DeleteGroupsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_groups_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DeleteGroupsRequest,
+            api_version: int,
+    ) -> DeleteGroupsResponse:
+        pass
+
+    async def handle_delete_records_request(
+            self,
+            header: DeleteRecordsRequestHeader,
+            req: DeleteRecordsRequest,
+            api_version: int,
+            callback: Callable[[DeleteRecordsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_records_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DeleteRecordsRequest,
+            api_version: int,
+    ) -> DeleteRecordsResponse:
+        pass
+
+    async def handle_delete_share_group_state_request(
+            self,
+            header: DeleteShareGroupStateRequestHeader,
+            req: DeleteShareGroupStateRequest,
+            api_version: int,
+            callback: Callable[[DeleteShareGroupStateResponse], Awaitable[None]],
+    ):
+        pass
+
+    def delete_share_group_state_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DeleteShareGroupStateRequest,
+            api_version: int,
+    ) -> DeleteShareGroupStateResponse:
+        pass
+
+    async def handle_describe_acls_request(
+            self,
+            header: DescribeAclsRequestHeader,
+            req: DescribeAclsRequest,
+            api_version: int,
+            callback: Callable[[DescribeAclsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_acls_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeAclsRequest,
+            api_version: int,
+    ) -> DescribeAclsResponse:
+        pass
+
+    async def handle_describe_client_quotas_request(
+            self,
+            header: DescribeClientQuotasRequestHeader,
+            req: DescribeClientQuotasRequest,
+            api_version: int,
+            callback: Callable[[DescribeClientQuotasResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_client_quotas_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeClientQuotasRequest,
+            api_version: int,
+    ) -> DescribeClientQuotasResponse:
+        pass
+
+    async def handle_describe_cluster_request(
+            self,
+            header: DescribeClusterRequestHeader,
+            req: DescribeClusterRequest,
+            api_version: int,
+            callback: Callable[[DescribeClusterResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_cluster_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeClusterRequest,
+            api_version: int,
+    ) -> DescribeClusterResponse:
+        pass
+
+    async def handle_describe_configs_request(
+            self,
+            header: DescribeConfigsRequestHeader,
+            req: DescribeConfigsRequest,
+            api_version: int,
+            callback: Callable[[DescribeConfigsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_configs_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeConfigsRequest,
+            api_version: int,
+    ) -> DescribeConfigsResponse:
+        pass
+
+    async def handle_describe_delegation_token_request(
+            self,
+            header: DescribeDelegationTokenRequestHeader,
+            req: DescribeDelegationTokenRequest,
+            api_version: int,
+            callback: Callable[[DescribeDelegationTokenResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_delegation_token_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeDelegationTokenRequest,
+            api_version: int,
+    ) -> DescribeDelegationTokenResponse:
+        pass
+
+    async def handle_describe_groups_request(
+            self,
+            header: DescribeGroupsRequestHeader,
+            req: DescribeGroupsRequest,
+            api_version: int,
+            callback: Callable[[DescribeGroupsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_groups_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeGroupsRequest,
+            api_version: int,
+    ) -> DescribeGroupsResponse:
+        pass
+
+    async def handle_describe_log_dirs_request(
+            self,
+            header: DescribeLogDirsRequestHeader,
+            req: DescribeLogDirsRequest,
+            api_version: int,
+            callback: Callable[[DescribeLogDirsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_log_dirs_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeLogDirsRequest,
+            api_version: int,
+    ) -> DescribeLogDirsResponse:
+        pass
+
+    async def handle_describe_producers_request(
+            self,
+            header: DescribeProducersRequestHeader,
+            req: DescribeProducersRequest,
+            api_version: int,
+            callback: Callable[[DescribeProducersResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_producers_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeProducersRequest,
+            api_version: int,
+    ) -> DescribeProducersResponse:
+        pass
+
+    async def handle_describe_quorum_request(
+            self,
+            header: DescribeQuorumRequestHeader,
+            req: DescribeQuorumRequest,
+            api_version: int,
+            callback: Callable[[DescribeQuorumResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_quorum_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeQuorumRequest,
+            api_version: int,
+    ) -> DescribeQuorumResponse:
+        pass
+
+    async def handle_describe_topic_partitions_request(
+            self,
+            header: DescribeTopicPartitionsRequestHeader,
+            req: DescribeTopicPartitionsRequest,
+            api_version: int,
+            callback: Callable[[DescribeTopicPartitionsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_topic_partitions_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeTopicPartitionsRequest,
+            api_version: int,
+    ) -> DescribeTopicPartitionsResponse:
+        pass
+
+    async def handle_describe_transactions_request(
+            self,
+            header: DescribeTransactionsRequestHeader,
+            req: DescribeTransactionsRequest,
+            api_version: int,
+            callback: Callable[[DescribeTransactionsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_transactions_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeTransactionsRequest,
+            api_version: int,
+    ) -> DescribeTransactionsResponse:
+        pass
+
+    async def handle_describe_user_scram_credentials_request(
+            self,
+            header: DescribeUserScramCredentialsRequestHeader,
+            req: DescribeUserScramCredentialsRequest,
+            api_version: int,
+            callback: Callable[[DescribeUserScramCredentialsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def describe_user_scram_credentials_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: DescribeUserScramCredentialsRequest,
+            api_version: int,
+    ) -> DescribeUserScramCredentialsResponse:
+        pass
+
+    async def handle_elect_leaders_request(
+            self,
+            header: ElectLeadersRequestHeader,
+            req: ElectLeadersRequest,
+            api_version: int,
+            callback: Callable[[ElectLeadersResponse], Awaitable[None]],
+    ):
+        pass
+
+    def elect_leaders_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: ElectLeadersRequest,
+            api_version: int,
+    ) -> ElectLeadersResponse:
+        pass
+
+    async def handle_end_quorum_epoch_request(
+            self,
+            header: EndQuorumEpochRequestHeader,
+            req: EndQuorumEpochRequest,
+            api_version: int,
+            callback: Callable[[EndQuorumEpochResponse], Awaitable[None]],
+    ):
+        pass
+
+    def end_quorum_epoch_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: EndQuorumEpochRequest,
+            api_version: int,
+    ) -> EndQuorumEpochResponse:
+        pass
+
+    async def handle_end_txn_request(
+            self,
+            header: EndTxnRequestHeader,
+            req: EndTxnRequest,
+            api_version: int,
+            callback: Callable[[EndTxnResponse], Awaitable[None]],
+    ):
+        pass
+
+    def end_txn_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: EndTxnRequest,
+            api_version: int,
+    ) -> EndTxnResponse:
+        pass
+
+    async def handle_envelope_request(
+            self,
+            header: EnvelopeRequestHeader,
+            req: EnvelopeRequest,
+            api_version: int,
+            callback: Callable[[EnvelopeResponse], Awaitable[None]],
+    ):
+        pass
+
+    def envelope_request_error_response(
+            self,
+            error_code: ErrorCode,
+            error_message: str,
+            req: EnvelopeRequest,
+            api_version: int,
+    ) -> EnvelopeResponse:
         pass
 
     async def handle_add_offsets_to_txn_request(
