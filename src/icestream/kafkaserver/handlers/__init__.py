@@ -215,8 +215,722 @@ from icestream.kafkaserver.handlers.controller_registration import (
     ControllerRegistrationRequestHeader,
     ControllerRegistrationResponse,
 )
+from icestream.kafkaserver.handlers.find_coordinator import (
+    FindCoordinatorRequest,
+    FindCoordinatorRequestHeader,
+    FindCoordinatorResponse,
+)
+from icestream.kafkaserver.handlers.expire_delegation_token import (
+    ExpireDelegationTokenRequest,
+    ExpireDelegationTokenRequestHeader,
+    ExpireDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.fetch_snapshot import (
+    FetchSnapshotRequest,
+    FetchSnapshotRequestHeader,
+    FetchSnapshotResponse,
+)
+from icestream.kafkaserver.handlers.get_telemetry_subscriptions import (
+    GetTelemetrySubscriptionsRequest,
+    GetTelemetrySubscriptionsRequestHeader,
+    GetTelemetrySubscriptionsResponse,
+)
+from icestream.kafkaserver.handlers.heartbeat import (
+    HeartbeatRequest,
+    HeartbeatRequestHeader,
+    HeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.incremental_alter_configs import (
+    IncrementalAlterConfigsRequest,
+    IncrementalAlterConfigsRequestHeader,
+    IncrementalAlterConfigsResponse,
+)
+from icestream.kafkaserver.handlers.init_producer_id import (
+    InitProducerIdRequest,
+    InitProducerIdRequestHeader,
+    InitProducerIdResponse,
+)
+from icestream.kafkaserver.handlers.initialize_share_group_state import (
+    InitializeShareGroupStateRequest,
+    InitializeShareGroupStateRequestHeader,
+    InitializeShareGroupStateResponse,
+)
+from icestream.kafkaserver.handlers.join_group import (
+    JoinGroupRequest,
+    JoinGroupRequestHeader,
+    JoinGroupResponse,
+)
+from icestream.kafkaserver.handlers.leader_and_isr import (
+    LeaderAndIsrRequest,
+    LeaderAndIsrRequestHeader,
+    LeaderAndIsrResponse,
+)
+from icestream.kafkaserver.handlers.leave_group import (
+    LeaveGroupRequest,
+    LeaveGroupRequestHeader,
+    LeaveGroupResponse,
+)
+from icestream.kafkaserver.handlers.list_client_metrics_resources import (
+    ListClientMetricsResourcesRequest,
+    ListClientMetricsResourcesRequestHeader,
+    ListClientMetricsResourcesResponse,
+)
+from icestream.kafkaserver.handlers.list_groups import (
+    ListGroupsRequest,
+    ListGroupsRequestHeader,
+    ListGroupsResponse,
+)
+from icestream.kafkaserver.handlers.list_offsets import (
+    ListOffsetsRequest,
+    ListOffsetsRequestHeader,
+    ListOffsetsResponse,
+)
+from icestream.kafkaserver.handlers.list_partition_reassignments import (
+    ListPartitionReassignmentsRequest,
+    ListPartitionReassignmentsRequestHeader,
+    ListPartitionReassignmentsResponse,
+)
+from icestream.kafkaserver.handlers.list_transactions import (
+    ListTransactionsRequest,
+    ListTransactionsRequestHeader,
+    ListTransactionsResponse,
+)
+from icestream.kafkaserver.handlers.offset_commit import (
+    OffsetCommitRequest,
+    OffsetCommitRequestHeader,
+    OffsetCommitResponse,
+)
+from icestream.kafkaserver.handlers.offset_delete import (
+    OffsetDeleteRequest,
+    OffsetDeleteRequestHeader,
+    OffsetDeleteResponse,
+)
+from icestream.kafkaserver.handlers.offset_fetch import (
+    OffsetFetchRequest,
+    OffsetFetchRequestHeader,
+    OffsetFetchResponse,
+)
+from icestream.kafkaserver.handlers.offset_for_leader_epoch import (
+    OffsetForLeaderEpochRequest,
+    OffsetForLeaderEpochRequestHeader,
+    OffsetForLeaderEpochResponse,
+)
+from icestream.kafkaserver.handlers.push_telemetry import (
+    PushTelemetryRequest,
+    PushTelemetryRequestHeader,
+    PushTelemetryResponse,
+)
+from icestream.kafkaserver.handlers.read_share_group_state import (
+    ReadShareGroupStateRequest,
+    ReadShareGroupStateRequestHeader,
+    ReadShareGroupStateResponse,
+)
+from icestream.kafkaserver.handlers.read_share_group_state_summary import (
+    ReadShareGroupStateSummaryRequest,
+    ReadShareGroupStateSummaryRequestHeader,
+    ReadShareGroupStateSummaryResponse,
+)
+from icestream.kafkaserver.handlers.remove_raft_voter import (
+    RemoveRaftVoterRequest,
+    RemoveRaftVoterRequestHeader,
+    RemoveRaftVoterResponse,
+)
+from icestream.kafkaserver.handlers.renew_delegation_token import (
+    RenewDelegationTokenRequest,
+    RenewDelegationTokenRequestHeader,
+    RenewDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.sasl_authenticate import (
+    SaslAuthenticateRequest,
+    SaslAuthenticateRequestHeader,
+    SaslAuthenticateResponse,
+)
+from icestream.kafkaserver.handlers.sasl_handshake import (
+    SaslHandshakeRequest,
+    SaslHandshakeRequestHeader,
+    SaslHandshakeResponse,
+)
+from icestream.kafkaserver.handlers.share_acknowledge import (
+    ShareAcknowledgeRequest,
+    ShareAcknowledgeRequestHeader,
+    ShareAcknowledgeResponse,
+)
+from icestream.kafkaserver.handlers.share_fetch import (
+    ShareFetchRequest,
+    ShareFetchRequestHeader,
+    ShareFetchResponse,
+)
+from icestream.kafkaserver.handlers.share_group_describe import (
+    ShareGroupDescribeRequest,
+    ShareGroupDescribeRequestHeader,
+    ShareGroupDescribeResponse,
+)
+from icestream.kafkaserver.handlers.share_group_heartbeat import (
+    ShareGroupHeartbeatRequest,
+    ShareGroupHeartbeatRequestHeader,
+    ShareGroupHeartbeatResponse,
+)
+
 
 class KafkaHandler(Protocol):
+    async def handle_share_group_heartbeat_request(
+        self,
+        header: ShareGroupHeartbeatRequestHeader,
+        req: ShareGroupHeartbeatRequest,
+        api_version: int,
+        callback: Callable[[ShareGroupHeartbeatResponse], Awaitable[None]],
+    ):
+        pass
+
+    def share_group_heartbeat_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ShareGroupHeartbeatRequest,
+        api_version: int,
+    ) -> ShareGroupHeartbeatResponse:
+        pass
+
+    async def handle_share_group_describe_request(
+        self,
+        header: ShareGroupDescribeRequestHeader,
+        req: ShareGroupDescribeRequest,
+        api_version: int,
+        callback: Callable[[ShareGroupDescribeResponse], Awaitable[None]],
+    ):
+        pass
+
+    def share_group_describe_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ShareGroupDescribeRequest,
+        api_version: int,
+    ) -> ShareGroupDescribeResponse:
+        pass
+
+    async def handle_share_fetch_request(
+        self,
+        header: ShareFetchRequestHeader,
+        req: ShareFetchRequest,
+        api_version: int,
+        callback: Callable[[ShareFetchResponse], Awaitable[None]],
+    ):
+        pass
+
+    def share_fetch_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ShareFetchRequest,
+        api_version: int,
+    ) -> ShareFetchResponse:
+        pass
+
+    async def handle_share_acknowledge_request(
+        self,
+        header: ShareAcknowledgeRequestHeader,
+        req: ShareAcknowledgeRequest,
+        api_version: int,
+        callback: Callable[[ShareAcknowledgeResponse], Awaitable[None]],
+    ):
+        pass
+
+    def share_acknowledge_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ShareAcknowledgeRequest,
+        api_version: int,
+    ) -> ShareAcknowledgeResponse:
+        pass
+
+    async def handle_sasl_handshake_request(
+        self,
+        header: SaslHandshakeRequestHeader,
+        req: SaslHandshakeRequest,
+        api_version: int,
+        callback: Callable[[SaslHandshakeResponse], Awaitable[None]],
+    ):
+        pass
+
+    def sasl_handshake_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: SaslHandshakeRequest,
+        api_version: int,
+    ) -> SaslHandshakeResponse:
+        pass
+
+    async def handle_sasl_authenticate_request(
+        self,
+        header: SaslAuthenticateRequestHeader,
+        req: SaslAuthenticateRequest,
+        api_version: int,
+        callback: Callable[[SaslAuthenticateResponse], Awaitable[None]],
+    ):
+        pass
+
+    def sasl_authenticate_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: SaslAuthenticateRequest,
+        api_version: int,
+    ) -> SaslAuthenticateResponse:
+        pass
+
+    async def handle_renew_delegation_token_request(
+        self,
+        header: RenewDelegationTokenRequestHeader,
+        req: RenewDelegationTokenRequest,
+        api_version: int,
+        callback: Callable[[RenewDelegationTokenResponse], Awaitable[None]],
+    ):
+        pass
+
+    def renew_delegation_token_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: RenewDelegationTokenRequest,
+        api_version: int,
+    ) -> RenewDelegationTokenResponse:
+        pass
+
+    async def handle_remove_raft_voter_request(
+        self,
+        header: RemoveRaftVoterRequestHeader,
+        req: RemoveRaftVoterRequest,
+        api_version: int,
+        callback: Callable[[RemoveRaftVoterResponse], Awaitable[None]],
+    ):
+        pass
+
+    def remove_raft_voter_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: RemoveRaftVoterRequest,
+        api_version: int,
+    ) -> RemoveRaftVoterResponse:
+        pass
+
+    async def handle_read_share_group_state_summary_request(
+        self,
+        header: ReadShareGroupStateSummaryRequestHeader,
+        req: ReadShareGroupStateSummaryRequest,
+        api_version: int,
+        callback: Callable[[ReadShareGroupStateSummaryResponse], Awaitable[None]],
+    ):
+        pass
+
+    def read_share_group_state_summary_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ReadShareGroupStateSummaryRequest,
+        api_version: int,
+    ) -> ReadShareGroupStateSummaryResponse:
+        pass
+
+    async def handle_read_share_group_state_request(
+        self,
+        header: ReadShareGroupStateRequestHeader,
+        req: ReadShareGroupStateRequest,
+        api_version: int,
+        callback: Callable[[ReadShareGroupStateResponse], Awaitable[None]],
+    ):
+        pass
+
+    def read_share_group_state_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ReadShareGroupStateRequest,
+        api_version: int,
+    ) -> ReadShareGroupStateResponse:
+        pass
+
+    async def handle_push_telemetry_request(
+        self,
+        header: PushTelemetryRequestHeader,
+        req: PushTelemetryRequest,
+        api_version: int,
+        callback: Callable[[PushTelemetryResponse], Awaitable[None]],
+    ):
+        pass
+
+    def push_telemetry_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: PushTelemetryRequest,
+        api_version: int,
+    ) -> PushTelemetryResponse:
+        pass
+
+    async def handle_offset_for_leader_epoch_request(
+        self,
+        header: OffsetForLeaderEpochRequestHeader,
+        req: OffsetForLeaderEpochRequest,
+        api_version: int,
+        callback: Callable[[OffsetForLeaderEpochResponse], Awaitable[None]],
+    ):
+        pass
+
+    def offset_for_leader_epoch_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: OffsetForLeaderEpochRequest,
+        api_version: int,
+    ) -> OffsetForLeaderEpochResponse:
+        pass
+
+    async def handle_offset_fetch_request(
+        self,
+        header: OffsetFetchRequestHeader,
+        req: OffsetFetchRequest,
+        api_version: int,
+        callback: Callable[[OffsetFetchResponse], Awaitable[None]],
+    ):
+        pass
+
+    def offset_fetch_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: OffsetFetchRequest,
+        api_version: int,
+    ) -> OffsetFetchResponse:
+        pass
+
+    async def handle_offset_delete_request(
+        self,
+        header: OffsetDeleteRequestHeader,
+        req: OffsetDeleteRequest,
+        api_version: int,
+        callback: Callable[[OffsetDeleteResponse], Awaitable[None]],
+    ):
+        pass
+
+    def offset_delete_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: OffsetDeleteRequest,
+        api_version: int,
+    ) -> OffsetDeleteResponse:
+        pass
+
+    async def handle_offset_commit_request(
+        self,
+        header: OffsetCommitRequestHeader,
+        req: OffsetCommitRequest,
+        api_version: int,
+        callback: Callable[[OffsetCommitResponse], Awaitable[None]],
+    ):
+        pass
+
+    def offset_commit_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: OffsetCommitRequest,
+        api_version: int,
+    ) -> OffsetCommitResponse:
+        pass
+
+    async def handle_list_transactions_request(
+        self,
+        header: ListTransactionsRequestHeader,
+        req: ListTransactionsRequest,
+        api_version: int,
+        callback: Callable[[ListTransactionsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def list_transactions_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ListTransactionsRequest,
+        api_version: int,
+    ) -> ListTransactionsResponse:
+        pass
+
+    async def handle_list_partition_reassignments_request(
+        self,
+        header: ListPartitionReassignmentsRequestHeader,
+        req: ListPartitionReassignmentsRequest,
+        api_version: int,
+        callback: Callable[[ListPartitionReassignmentsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def list_partition_reassignments_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ListPartitionReassignmentsRequest,
+        api_version: int,
+    ) -> ListPartitionReassignmentsResponse:
+        pass
+
+    async def handle_list_offsets_request(
+        self,
+        header: ListOffsetsRequestHeader,
+        req: ListOffsetsRequest,
+        api_version: int,
+        callback: Callable[[ListOffsetsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def list_offsets_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ListOffsetsRequest,
+        api_version: int,
+    ) -> ListOffsetsResponse:
+        pass
+
+    async def handle_list_groups_request(
+        self,
+        header: ListGroupsRequestHeader,
+        req: ListGroupsRequest,
+        api_version: int,
+        callback: Callable[[ListGroupsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def list_groups_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ListGroupsRequest,
+        api_version: int,
+    ) -> ListGroupsResponse:
+        pass
+
+    async def handle_list_client_metrics_resources_request(
+        self,
+        header: ListClientMetricsResourcesRequestHeader,
+        req: ListClientMetricsResourcesRequest,
+        api_version: int,
+        callback: Callable[[ListClientMetricsResourcesResponse], Awaitable[None]],
+    ):
+        pass
+
+    def list_client_metrics_resources_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ListClientMetricsResourcesRequest,
+        api_version: int,
+    ) -> ListClientMetricsResourcesResponse:
+        pass
+
+    async def handle_leave_group_request(
+        self,
+        header: LeaveGroupRequestHeader,
+        req: LeaveGroupRequest,
+        api_version: int,
+        callback: Callable[[LeaveGroupResponse], Awaitable[None]],
+    ):
+        pass
+
+    def leave_group_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: LeaveGroupRequest,
+        api_version: int,
+    ) -> LeaveGroupResponse:
+        pass
+
+    async def handle_leader_and_isr_request(
+        self,
+        header: LeaderAndIsrRequestHeader,
+        req: LeaderAndIsrRequest,
+        api_version: int,
+        callback: Callable[[LeaderAndIsrResponse], Awaitable[None]],
+    ):
+        pass
+
+    def leader_and_isr_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: LeaderAndIsrRequest,
+        api_version: int,
+    ) -> LeaderAndIsrResponse:
+        pass
+
+    async def handle_join_group_request(
+        self,
+        header: JoinGroupRequestHeader,
+        req: JoinGroupRequest,
+        api_version: int,
+        callback: Callable[[JoinGroupResponse], Awaitable[None]],
+    ):
+        pass
+
+    def join_group_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: JoinGroupRequest,
+        api_version: int,
+    ) -> JoinGroupResponse:
+        pass
+
+    async def handle_initialize_share_group_state_request(
+        self,
+        header: InitializeShareGroupStateRequestHeader,
+        req: InitializeShareGroupStateRequest,
+        api_version: int,
+        callback: Callable[[InitializeShareGroupStateResponse], Awaitable[None]],
+    ):
+        pass
+
+    def initialize_share_group_state_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: InitializeShareGroupStateRequest,
+        api_version: int,
+    ) -> InitializeShareGroupStateResponse:
+        pass
+
+    async def handle_init_producer_id_request(
+        self,
+        header: InitProducerIdRequestHeader,
+        req: InitProducerIdRequest,
+        api_version: int,
+        callback: Callable[[InitProducerIdResponse], Awaitable[None]],
+    ):
+        pass
+
+    def init_producer_id_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: InitProducerIdRequest,
+        api_version: int,
+    ) -> InitProducerIdResponse:
+        pass
+
+    async def handle_incremental_alter_configs_request(
+        self,
+        header: IncrementalAlterConfigsRequestHeader,
+        req: IncrementalAlterConfigsRequest,
+        api_version: int,
+        callback: Callable[[IncrementalAlterConfigsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def incremental_alter_configs_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: IncrementalAlterConfigsRequest,
+        api_version: int,
+    ) -> IncrementalAlterConfigsResponse:
+        pass
+
+    async def handle_heartbeat_request(
+        self,
+        header: HeartbeatRequestHeader,
+        req: HeartbeatRequest,
+        api_version: int,
+        callback: Callable[[HeartbeatResponse], Awaitable[None]],
+    ):
+        pass
+
+    def heartbeat_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: HeartbeatRequest,
+        api_version: int,
+    ) -> HeartbeatResponse:
+        pass
+
+    async def handle_get_telemetry_subscriptions_request(
+        self,
+        header: GetTelemetrySubscriptionsRequestHeader,
+        req: GetTelemetrySubscriptionsRequest,
+        api_version: int,
+        callback: Callable[[GetTelemetrySubscriptionsResponse], Awaitable[None]],
+    ):
+        pass
+
+    def get_telemetry_subscriptions_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: GetTelemetrySubscriptionsRequest,
+        api_version: int,
+    ) -> GetTelemetrySubscriptionsResponse:
+        pass
+
+    async def handle_fetch_snapshot_request(
+        self,
+        header: FetchSnapshotRequestHeader,
+        req: FetchSnapshotRequest,
+        api_version: int,
+        callback: Callable[[FetchSnapshotResponse], Awaitable[None]],
+    ):
+        pass
+
+    def fetch_snapshot_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: FetchSnapshotRequest,
+        api_version: int,
+    ) -> FetchSnapshotResponse:
+        pass
+
+    async def handle_expire_delegation_token_request(
+        self,
+        header: ExpireDelegationTokenRequestHeader,
+        req: ExpireDelegationTokenRequest,
+        api_version: int,
+        callback: Callable[[ExpireDelegationTokenResponse], Awaitable[None]],
+    ):
+        pass
+
+    def expire_delegation_token_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: ExpireDelegationTokenRequest,
+        api_version: int,
+    ) -> ExpireDelegationTokenResponse:
+        pass
+
+    async def handle_find_coordinator_request(
+        self,
+        header: FindCoordinatorRequestHeader,
+        req: FindCoordinatorRequest,
+        api_version: int,
+        callback: Callable[[FindCoordinatorResponse], Awaitable[None]],
+    ):
+        pass
+
+    def find_coordinator_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: FindCoordinatorRequest,
+        api_version: int,
+    ) -> FindCoordinatorResponse:
+        pass
+
     async def handle_produce_request(
         self,
         header: ProduceRequestHeader,

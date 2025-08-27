@@ -190,12 +190,198 @@ from icestream.kafkaserver.handlers.create_partitions import (
     CreatePartitionsRequestHeader,
     CreatePartitionsResponse,
 )
+from icestream.kafkaserver.handlers.find_coordinator import (
+    FindCoordinatorRequest,
+    FindCoordinatorRequestHeader,
+    FindCoordinatorResponse,
+)
+from icestream.kafkaserver.handlers.expire_delegation_token import (
+    ExpireDelegationTokenRequest,
+    ExpireDelegationTokenRequestHeader,
+    ExpireDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.fetch_snapshot import (
+    FetchSnapshotRequest,
+    FetchSnapshotRequestHeader,
+    FetchSnapshotResponse,
+)
+from icestream.kafkaserver.handlers.get_telemetry_subscriptions import (
+    GetTelemetrySubscriptionsRequest,
+    GetTelemetrySubscriptionsRequestHeader,
+    GetTelemetrySubscriptionsResponse,
+)
+from icestream.kafkaserver.handlers.heartbeat import (
+    HeartbeatRequest,
+    HeartbeatRequestHeader,
+    HeartbeatResponse,
+)
+from icestream.kafkaserver.handlers.incremental_alter_configs import (
+    IncrementalAlterConfigsRequest,
+    IncrementalAlterConfigsRequestHeader,
+    IncrementalAlterConfigsResponse,
+)
+from icestream.kafkaserver.handlers.init_producer_id import (
+    InitProducerIdRequest,
+    InitProducerIdRequestHeader,
+    InitProducerIdResponse,
+)
+from icestream.kafkaserver.handlers.initialize_share_group_state import (
+    InitializeShareGroupStateRequest,
+    InitializeShareGroupStateRequestHeader,
+    InitializeShareGroupStateResponse,
+)
+from icestream.kafkaserver.handlers.join_group import (
+    JoinGroupRequest,
+    JoinGroupRequestHeader,
+    JoinGroupResponse,
+)
+from icestream.kafkaserver.handlers.leader_and_isr import (
+    LeaderAndIsrRequest,
+    LeaderAndIsrRequestHeader,
+    LeaderAndIsrResponse,
+)
+from icestream.kafkaserver.handlers.leave_group import (
+    LeaveGroupRequest,
+    LeaveGroupRequestHeader,
+    LeaveGroupResponse,
+)
+from icestream.kafkaserver.handlers.list_client_metrics_resources import (
+    ListClientMetricsResourcesRequest,
+    ListClientMetricsResourcesRequestHeader,
+    ListClientMetricsResourcesResponse,
+)
+from icestream.kafkaserver.handlers.list_groups import (
+    ListGroupsRequest,
+    ListGroupsRequestHeader,
+    ListGroupsResponse,
+)
+from icestream.kafkaserver.handlers.list_offsets import (
+    ListOffsetsRequest,
+    ListOffsetsRequestHeader,
+    ListOffsetsResponse,
+)
+from icestream.kafkaserver.handlers.list_partition_reassignments import (
+    ListPartitionReassignmentsRequest,
+    ListPartitionReassignmentsRequestHeader,
+    ListPartitionReassignmentsResponse,
+)
+from icestream.kafkaserver.handlers.list_transactions import (
+    ListTransactionsRequest,
+    ListTransactionsRequestHeader,
+    ListTransactionsResponse,
+)
+from icestream.kafkaserver.handlers.offset_commit import (
+    OffsetCommitRequest,
+    OffsetCommitRequestHeader,
+    OffsetCommitResponse,
+)
+from icestream.kafkaserver.handlers.offset_delete import (
+    OffsetDeleteRequest,
+    OffsetDeleteRequestHeader,
+    OffsetDeleteResponse,
+)
+from icestream.kafkaserver.handlers.offset_fetch import (
+    OffsetFetchRequest,
+    OffsetFetchRequestHeader,
+    OffsetFetchResponse,
+)
+from icestream.kafkaserver.handlers.offset_for_leader_epoch import (
+    OffsetForLeaderEpochRequest,
+    OffsetForLeaderEpochRequestHeader,
+    OffsetForLeaderEpochResponse,
+)
+from icestream.kafkaserver.handlers.push_telemetry import (
+    PushTelemetryRequest,
+    PushTelemetryRequestHeader,
+    PushTelemetryResponse,
+)
+from icestream.kafkaserver.handlers.read_share_group_state import (
+    ReadShareGroupStateRequest,
+    ReadShareGroupStateRequestHeader,
+    ReadShareGroupStateResponse,
+)
+from icestream.kafkaserver.handlers.read_share_group_state_summary import (
+    ReadShareGroupStateSummaryRequest,
+    ReadShareGroupStateSummaryRequestHeader,
+    ReadShareGroupStateSummaryResponse,
+)
+from icestream.kafkaserver.handlers.remove_raft_voter import (
+    RemoveRaftVoterRequest,
+    RemoveRaftVoterRequestHeader,
+    RemoveRaftVoterResponse,
+)
+from icestream.kafkaserver.handlers.renew_delegation_token import (
+    RenewDelegationTokenRequest,
+    RenewDelegationTokenRequestHeader,
+    RenewDelegationTokenResponse,
+)
+from icestream.kafkaserver.handlers.sasl_authenticate import (
+    SaslAuthenticateRequest,
+    SaslAuthenticateRequestHeader,
+    SaslAuthenticateResponse,
+)
+from icestream.kafkaserver.handlers.sasl_handshake import (
+    SaslHandshakeRequest,
+    SaslHandshakeRequestHeader,
+    SaslHandshakeResponse,
+)
+from icestream.kafkaserver.handlers.share_acknowledge import (
+    ShareAcknowledgeRequest,
+    ShareAcknowledgeRequestHeader,
+    ShareAcknowledgeResponse,
+)
+from icestream.kafkaserver.handlers.share_fetch import (
+    ShareFetchRequest,
+    ShareFetchRequestHeader,
+    ShareFetchResponse,
+)
+from icestream.kafkaserver.handlers.share_group_describe import (
+    ShareGroupDescribeRequest,
+    ShareGroupDescribeRequestHeader,
+    ShareGroupDescribeResponse,
+)
+from icestream.kafkaserver.handlers.share_group_heartbeat import (
+    ShareGroupHeartbeatRequest,
+    ShareGroupHeartbeatRequestHeader,
+    ShareGroupHeartbeatResponse,
+)
 
 log = structlog.get_logger()
 
 PRODUCE_API_KEY = 0
 FETCH_API_KEY = 1
 METADATA_API_KEY = 3
+FIND_COORDINATOR_API_KEY = 10
+EXPIRE_DELEGATION_TOKEN_API_KEY = 40
+FETCH_SNAPSHOT_API_KEY = 59
+GET_TELEMETRY_SUBSCRIPTIONS_API_KEY = 71
+HEARTBEAT_API_KEY = 12
+INCREMENTAL_ALTER_CONFIGS_API_KEY = 44
+INIT_PRODUCER_ID_API_KEY = 22
+INITIALIZE_SHARE_GROUP_STATE_API_KEY = 83
+JOIN_GROUP_API_KEY = 11
+LEADER_AND_ISR_API_KEY = 4
+LEAVE_GROUP_API_KEY = 13
+LIST_CLIENT_METRICS_RESOURCES_API_KEY = 74
+LIST_GROUPS_API_KEY = 16
+LIST_OFFSETS_API_KEY = 2
+LIST_PARTITION_REASSIGNMENTS_API_KEY = 46
+LIST_TRANSACTIONS_API_KEY = 66
+OFFSET_COMMIT_API_KEY = 8
+OFFSET_DELETE_API_KEY = 47
+OFFSET_FETCH_API_KEY = 9
+OFFSET_FOR_LEADER_EPOCH_API_KEY = 23
+PUSH_TELEMETRY_API_KEY = 72
+READ_SHARE_GROUP_STATE_API_KEY = 84
+READ_SHARE_GROUP_STATE_SUMMARY_API_KEY = 87
+REMOVE_RAFT_VOTER_API_KEY = 81
+RENEW_DELEGATION_TOKEN_API_KEY = 39
+SASL_AUTHENTICATE_API_KEY = 36
+SASL_HANDSHAKE_API_KEY = 17
+SHARE_ACKNOWLEDGE_API_KEY = 79
+SHARE_FETCH_API_KEY = 78
+SHARE_GROUP_DESCRIBE_API_KEY = 77
+SHARE_GROUP_HEARTBEAT_API_KEY = 76
 CONTROLLED_SHUTDOWN_API_KEY = 7
 API_VERSIONS_API_KEY = 18
 CREATE_TOPICS_API_KEY = 19
@@ -307,7 +493,348 @@ api_compatibility: dict[int, tuple[int, int]] = {
     CREATE_ACLS_API_KEY: (0, 3),
     CREATE_DELEGATION_TOKEN_API_KEY: (0, 3),
     CREATE_PARTITIONS_API_KEY: (0, 3),
+    FIND_COORDINATOR_API_KEY: (0, 6),
+    EXPIRE_DELEGATION_TOKEN_API_KEY: (0, 2),
+    FETCH_SNAPSHOT_API_KEY: (0, 1),
+    GET_TELEMETRY_SUBSCRIPTIONS_API_KEY: (0, 0),
+    HEARTBEAT_API_KEY: (0, 4),
+    INCREMENTAL_ALTER_CONFIGS_API_KEY: (0, 1),
+    INIT_PRODUCER_ID_API_KEY: (0, 5),
+    INITIALIZE_SHARE_GROUP_STATE_API_KEY: (0, 0),
+    JOIN_GROUP_API_KEY: (0, 9),
+    LEADER_AND_ISR_API_KEY: (0, 7),
+    LEAVE_GROUP_API_KEY: (0, 5),
+    LIST_CLIENT_METRICS_RESOURCES_API_KEY: (0, 0),
+    LIST_GROUPS_API_KEY: (0, 5),
+    LIST_OFFSETS_API_KEY: (0, 9),
+    LIST_PARTITION_REASSIGNMENTS_API_KEY: (0, 0),
+    LIST_TRANSACTIONS_API_KEY: (0, 1),
+    OFFSET_COMMIT_API_KEY: (0, 9),
+    OFFSET_DELETE_API_KEY: (0, 0),
+    OFFSET_FETCH_API_KEY: (0, 9),
+    OFFSET_FOR_LEADER_EPOCH_API_KEY: (0, 4),
+    PUSH_TELEMETRY_API_KEY: (0, 0),
+    READ_SHARE_GROUP_STATE_API_KEY: (0, 0),
+    READ_SHARE_GROUP_STATE_SUMMARY_API_KEY: (0, 0),
+    REMOVE_RAFT_VOTER_API_KEY: (0, 0),
+    RENEW_DELEGATION_TOKEN_API_KEY: (0, 2),
+    SASL_AUTHENTICATE_API_KEY: (0, 2),
+    SASL_HANDSHAKE_API_KEY: (0, 1),
+    SHARE_ACKNOWLEDGE_API_KEY: (0, 0),
+    SHARE_FETCH_API_KEY: (0, 0),
+    SHARE_GROUP_DESCRIBE_API_KEY: (0, 0),
+    SHARE_GROUP_HEARTBEAT_API_KEY: (0, 0),
 }
+
+
+async def handle_share_group_heartbeat(
+    handler: KafkaHandler,
+    header: ShareGroupHeartbeatRequestHeader,
+    req: ShareGroupHeartbeatRequest,
+    api_version: int,
+    respond: Callable[[ShareGroupHeartbeatResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_share_group_heartbeat_request(header, req, api_version, respond)
+
+
+async def handle_share_group_describe(
+    handler: KafkaHandler,
+    header: ShareGroupDescribeRequestHeader,
+    req: ShareGroupDescribeRequest,
+    api_version: int,
+    respond: Callable[[ShareGroupDescribeResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_share_group_describe_request(header, req, api_version, respond)
+
+
+async def handle_share_fetch(
+    handler: KafkaHandler,
+    header: ShareFetchRequestHeader,
+    req: ShareFetchRequest,
+    api_version: int,
+    respond: Callable[[ShareFetchResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_share_fetch_request(header, req, api_version, respond)
+
+
+async def handle_share_acknowledge(
+    handler: KafkaHandler,
+    header: ShareAcknowledgeRequestHeader,
+    req: ShareAcknowledgeRequest,
+    api_version: int,
+    respond: Callable[[ShareAcknowledgeResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_share_acknowledge_request(header, req, api_version, respond)
+
+
+async def handle_sasl_handshake(
+    handler: KafkaHandler,
+    header: SaslHandshakeRequestHeader,
+    req: SaslHandshakeRequest,
+    api_version: int,
+    respond: Callable[[SaslHandshakeResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_sasl_handshake_request(header, req, api_version, respond)
+
+
+async def handle_sasl_authenticate(
+    handler: KafkaHandler,
+    header: SaslAuthenticateRequestHeader,
+    req: SaslAuthenticateRequest,
+    api_version: int,
+    respond: Callable[[SaslAuthenticateResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_sasl_authenticate_request(header, req, api_version, respond)
+
+
+async def handle_renew_delegation_token(
+    handler: KafkaHandler,
+    header: RenewDelegationTokenRequestHeader,
+    req: RenewDelegationTokenRequest,
+    api_version: int,
+    respond: Callable[[RenewDelegationTokenResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_renew_delegation_token_request(header, req, api_version, respond)
+
+
+async def handle_remove_raft_voter(
+    handler: KafkaHandler,
+    header: RemoveRaftVoterRequestHeader,
+    req: RemoveRaftVoterRequest,
+    api_version: int,
+    respond: Callable[[RemoveRaftVoterResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_remove_raft_voter_request(header, req, api_version, respond)
+
+
+async def handle_read_share_group_state_summary(
+    handler: KafkaHandler,
+    header: ReadShareGroupStateSummaryRequestHeader,
+    req: ReadShareGroupStateSummaryRequest,
+    api_version: int,
+    respond: Callable[[ReadShareGroupStateSummaryResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_read_share_group_state_summary_request(header, req, api_version, respond)
+
+
+async def handle_read_share_group_state(
+    handler: KafkaHandler,
+    header: ReadShareGroupStateRequestHeader,
+    req: ReadShareGroupStateRequest,
+    api_version: int,
+    respond: Callable[[ReadShareGroupStateResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_read_share_group_state_request(header, req, api_version, respond)
+
+
+async def handle_push_telemetry(
+    handler: KafkaHandler,
+    header: PushTelemetryRequestHeader,
+    req: PushTelemetryRequest,
+    api_version: int,
+    respond: Callable[[PushTelemetryResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_push_telemetry_request(header, req, api_version, respond)
+
+
+async def handle_offset_for_leader_epoch(
+    handler: KafkaHandler,
+    header: OffsetForLeaderEpochRequestHeader,
+    req: OffsetForLeaderEpochRequest,
+    api_version: int,
+    respond: Callable[[OffsetForLeaderEpochResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_offset_for_leader_epoch_request(header, req, api_version, respond)
+
+
+async def handle_offset_fetch(
+    handler: KafkaHandler,
+    header: OffsetFetchRequestHeader,
+    req: OffsetFetchRequest,
+    api_version: int,
+    respond: Callable[[OffsetFetchResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_offset_fetch_request(header, req, api_version, respond)
+
+
+async def handle_offset_delete(
+    handler: KafkaHandler,
+    header: OffsetDeleteRequestHeader,
+    req: OffsetDeleteRequest,
+    api_version: int,
+    respond: Callable[[OffsetDeleteResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_offset_delete_request(header, req, api_version, respond)
+
+
+async def handle_offset_commit(
+    handler: KafkaHandler,
+    header: OffsetCommitRequestHeader,
+    req: OffsetCommitRequest,
+    api_version: int,
+    respond: Callable[[OffsetCommitResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_offset_commit_request(header, req, api_version, respond)
+
+
+async def handle_list_transactions(
+    handler: KafkaHandler,
+    header: ListTransactionsRequestHeader,
+    req: ListTransactionsRequest,
+    api_version: int,
+    respond: Callable[[ListTransactionsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_list_transactions_request(header, req, api_version, respond)
+
+
+async def handle_list_partition_reassignments(
+    handler: KafkaHandler,
+    header: ListPartitionReassignmentsRequestHeader,
+    req: ListPartitionReassignmentsRequest,
+    api_version: int,
+    respond: Callable[[ListPartitionReassignmentsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_list_partition_reassignments_request(header, req, api_version, respond)
+
+
+async def handle_list_offsets(
+    handler: KafkaHandler,
+    header: ListOffsetsRequestHeader,
+    req: ListOffsetsRequest,
+    api_version: int,
+    respond: Callable[[ListOffsetsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_list_offsets_request(header, req, api_version, respond)
+
+
+async def handle_list_groups(
+    handler: KafkaHandler,
+    header: ListGroupsRequestHeader,
+    req: ListGroupsRequest,
+    api_version: int,
+    respond: Callable[[ListGroupsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_list_groups_request(header, req, api_version, respond)
+
+
+async def handle_list_client_metrics_resources(
+    handler: KafkaHandler,
+    header: ListClientMetricsResourcesRequestHeader,
+    req: ListClientMetricsResourcesRequest,
+    api_version: int,
+    respond: Callable[[ListClientMetricsResourcesResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_list_client_metrics_resources_request(header, req, api_version, respond)
+
+
+async def handle_leave_group(
+    handler: KafkaHandler,
+    header: LeaveGroupRequestHeader,
+    req: LeaveGroupRequest,
+    api_version: int,
+    respond: Callable[[LeaveGroupResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_leave_group_request(header, req, api_version, respond)
+
+
+async def handle_leader_and_isr(
+    handler: KafkaHandler,
+    header: LeaderAndIsrRequestHeader,
+    req: LeaderAndIsrRequest,
+    api_version: int,
+    respond: Callable[[LeaderAndIsrResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_leader_and_isr_request(header, req, api_version, respond)
+
+
+async def handle_join_group(
+    handler: KafkaHandler,
+    header: JoinGroupRequestHeader,
+    req: JoinGroupRequest,
+    api_version: int,
+    respond: Callable[[JoinGroupResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_join_group_request(header, req, api_version, respond)
+
+
+async def handle_initialize_share_group_state(
+    handler: KafkaHandler,
+    header: InitializeShareGroupStateRequestHeader,
+    req: InitializeShareGroupStateRequest,
+    api_version: int,
+    respond: Callable[[InitializeShareGroupStateResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_initialize_share_group_state_request(header, req, api_version, respond)
+
+
+async def handle_init_producer_id(
+    handler: KafkaHandler,
+    header: InitProducerIdRequestHeader,
+    req: InitProducerIdRequest,
+    api_version: int,
+    respond: Callable[[InitProducerIdResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_init_producer_id_request(header, req, api_version, respond)
+
+
+async def handle_incremental_alter_configs(
+    handler: KafkaHandler,
+    header: IncrementalAlterConfigsRequestHeader,
+    req: IncrementalAlterConfigsRequest,
+    api_version: int,
+    respond: Callable[[IncrementalAlterConfigsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_incremental_alter_configs_request(header, req, api_version, respond)
+
+
+async def handle_heartbeat(
+    handler: KafkaHandler,
+    header: HeartbeatRequestHeader,
+    req: HeartbeatRequest,
+    api_version: int,
+    respond: Callable[[HeartbeatResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_heartbeat_request(header, req, api_version, respond)
+
+
+async def handle_get_telemetry_subscriptions(
+    handler: KafkaHandler,
+    header: GetTelemetrySubscriptionsRequestHeader,
+    req: GetTelemetrySubscriptionsRequest,
+    api_version: int,
+    respond: Callable[[GetTelemetrySubscriptionsResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_get_telemetry_subscriptions_request(header, req, api_version, respond)
+
+
+async def handle_fetch_snapshot(
+    handler: KafkaHandler,
+    header: FetchSnapshotRequestHeader,
+    req: FetchSnapshotRequest,
+    api_version: int,
+    respond: Callable[[FetchSnapshotResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_fetch_snapshot_request(header, req, api_version, respond)
+
+
+async def handle_expire_delegation_token(
+    handler: KafkaHandler,
+    header: ExpireDelegationTokenRequestHeader,
+    req: ExpireDelegationTokenRequest,
+    api_version: int,
+    respond: Callable[[ExpireDelegationTokenResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_expire_delegation_token_request(header, req, api_version, respond)
+
+
+async def handle_find_coordinator(
+        handler: KafkaHandler,
+        header: FindCoordinatorRequestHeader,
+        req: FindCoordinatorRequest,
+        api_version: int,
+        respond: Callable[[FindCoordinatorResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_find_coordinator_request(header, req, api_version, respond)
 
 
 async def handle_produce(
@@ -1292,6 +1819,378 @@ def error_create_partitions(
     )
 
 
+def error_find_coordinator(
+        handler: KafkaHandler,
+        code: ErrorCode,
+        msg: str,
+        req: FindCoordinatorRequest,
+        api_version: int,
+) -> FindCoordinatorResponse:
+    return handler.find_coordinator_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_expire_delegation_token(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ExpireDelegationTokenRequest,
+    api_version: int,
+) -> ExpireDelegationTokenResponse:
+    return handler.expire_delegation_token_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_fetch_snapshot(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: FetchSnapshotRequest,
+    api_version: int,
+) -> FetchSnapshotResponse:
+    return handler.fetch_snapshot_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_get_telemetry_subscriptions(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: GetTelemetrySubscriptionsRequest,
+    api_version: int,
+) -> GetTelemetrySubscriptionsResponse:
+    return handler.get_telemetry_subscriptions_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_heartbeat(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: HeartbeatRequest,
+    api_version: int,
+) -> HeartbeatResponse:
+    return handler.heartbeat_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_incremental_alter_configs(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: IncrementalAlterConfigsRequest,
+    api_version: int,
+) -> IncrementalAlterConfigsResponse:
+    return handler.incremental_alter_configs_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_init_producer_id(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: InitProducerIdRequest,
+    api_version: int,
+) -> InitProducerIdResponse:
+    return handler.init_producer_id_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_initialize_share_group_state(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: InitializeShareGroupStateRequest,
+    api_version: int,
+) -> InitializeShareGroupStateResponse:
+    return handler.initialize_share_group_state_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_join_group(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: JoinGroupRequest,
+    api_version: int,
+) -> JoinGroupResponse:
+    return handler.join_group_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_leader_and_isr(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: LeaderAndIsrRequest,
+    api_version: int,
+) -> LeaderAndIsrResponse:
+    return handler.leader_and_isr_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_leave_group(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: LeaveGroupRequest,
+    api_version: int,
+) -> LeaveGroupResponse:
+    return handler.leave_group_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_list_client_metrics_resources(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ListClientMetricsResourcesRequest,
+    api_version: int,
+) -> ListClientMetricsResourcesResponse:
+    return handler.list_client_metrics_resources_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_list_groups(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ListGroupsRequest,
+    api_version: int,
+) -> ListGroupsResponse:
+    return handler.list_groups_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_list_offsets(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ListOffsetsRequest,
+    api_version: int,
+) -> ListOffsetsResponse:
+    return handler.list_offsets_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_list_partition_reassignments(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ListPartitionReassignmentsRequest,
+    api_version: int,
+) -> ListPartitionReassignmentsResponse:
+    return handler.list_partition_reassignments_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_list_transactions(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ListTransactionsRequest,
+    api_version: int,
+) -> ListTransactionsResponse:
+    return handler.list_transactions_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_offset_commit(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: OffsetCommitRequest,
+    api_version: int,
+) -> OffsetCommitResponse:
+    return handler.offset_commit_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_offset_delete(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: OffsetDeleteRequest,
+    api_version: int,
+) -> OffsetDeleteResponse:
+    return handler.offset_delete_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_offset_fetch(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: OffsetFetchRequest,
+    api_version: int,
+) -> OffsetFetchResponse:
+    return handler.offset_fetch_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_offset_for_leader_epoch(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: OffsetForLeaderEpochRequest,
+    api_version: int,
+) -> OffsetForLeaderEpochResponse:
+    return handler.offset_for_leader_epoch_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_push_telemetry(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: PushTelemetryRequest,
+    api_version: int,
+) -> PushTelemetryResponse:
+    return handler.push_telemetry_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_read_share_group_state(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ReadShareGroupStateRequest,
+    api_version: int,
+) -> ReadShareGroupStateResponse:
+    return handler.read_share_group_state_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_read_share_group_state_summary(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ReadShareGroupStateSummaryRequest,
+    api_version: int,
+) -> ReadShareGroupStateSummaryResponse:
+    return handler.read_share_group_state_summary_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_remove_raft_voter(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: RemoveRaftVoterRequest,
+    api_version: int,
+) -> RemoveRaftVoterResponse:
+    return handler.remove_raft_voter_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_renew_delegation_token(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: RenewDelegationTokenRequest,
+    api_version: int,
+) -> RenewDelegationTokenResponse:
+    return handler.renew_delegation_token_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_sasl_authenticate(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: SaslAuthenticateRequest,
+    api_version: int,
+) -> SaslAuthenticateResponse:
+    return handler.sasl_authenticate_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_sasl_handshake(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: SaslHandshakeRequest,
+    api_version: int,
+) -> SaslHandshakeResponse:
+    return handler.sasl_handshake_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_share_acknowledge(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ShareAcknowledgeRequest,
+    api_version: int,
+) -> ShareAcknowledgeResponse:
+    return handler.share_acknowledge_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_share_fetch(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ShareFetchRequest,
+    api_version: int,
+) -> ShareFetchResponse:
+    return handler.share_fetch_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_share_group_describe(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ShareGroupDescribeRequest,
+    api_version: int,
+) -> ShareGroupDescribeResponse:
+    return handler.share_group_describe_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_share_group_heartbeat(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: ShareGroupHeartbeatRequest,
+    api_version: int,
+) -> ShareGroupHeartbeatResponse:
+    return handler.share_group_heartbeat_request_error_response(
+        code, msg, req, api_version
+    )
+
+
 request_map: dict[int, RequestHandlerMeta] = {
     PRODUCE_API_KEY: RequestHandlerMeta(
         handler_func=handle_produce,
@@ -1476,6 +2375,130 @@ request_map: dict[int, RequestHandlerMeta] = {
     CREATE_PARTITIONS_API_KEY: RequestHandlerMeta(
         handler_func=handle_create_partitions,
         error_response_func=error_create_partitions,
+    ),
+    FIND_COORDINATOR_API_KEY: RequestHandlerMeta(
+        handler_func=handle_find_coordinator,
+        error_response_func=error_find_coordinator,
+    ),
+    EXPIRE_DELEGATION_TOKEN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_expire_delegation_token,
+        error_response_func=error_expire_delegation_token,
+    ),
+    FETCH_SNAPSHOT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_fetch_snapshot,
+        error_response_func=error_fetch_snapshot,
+    ),
+    GET_TELEMETRY_SUBSCRIPTIONS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_get_telemetry_subscriptions,
+        error_response_func=error_get_telemetry_subscriptions,
+    ),
+    HEARTBEAT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_heartbeat,
+        error_response_func=error_heartbeat,
+    ),
+    INCREMENTAL_ALTER_CONFIGS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_incremental_alter_configs,
+        error_response_func=error_incremental_alter_configs,
+    ),
+    INIT_PRODUCER_ID_API_KEY: RequestHandlerMeta(
+        handler_func=handle_init_producer_id,
+        error_response_func=error_init_producer_id,
+    ),
+    INITIALIZE_SHARE_GROUP_STATE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_initialize_share_group_state,
+        error_response_func=error_initialize_share_group_state,
+    ),
+    JOIN_GROUP_API_KEY: RequestHandlerMeta(
+        handler_func=handle_join_group,
+        error_response_func=error_join_group,
+    ),
+    LEADER_AND_ISR_API_KEY: RequestHandlerMeta(
+        handler_func=handle_leader_and_isr,
+        error_response_func=error_leader_and_isr,
+    ),
+    LEAVE_GROUP_API_KEY: RequestHandlerMeta(
+        handler_func=handle_leave_group,
+        error_response_func=error_leave_group,
+    ),
+    LIST_CLIENT_METRICS_RESOURCES_API_KEY: RequestHandlerMeta(
+        handler_func=handle_list_client_metrics_resources,
+        error_response_func=error_list_client_metrics_resources,
+    ),
+    LIST_GROUPS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_list_groups,
+        error_response_func=error_list_groups,
+    ),
+    LIST_OFFSETS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_list_offsets,
+        error_response_func=error_list_offsets,
+    ),
+    LIST_PARTITION_REASSIGNMENTS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_list_partition_reassignments,
+        error_response_func=error_list_partition_reassignments,
+    ),
+    LIST_TRANSACTIONS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_list_transactions,
+        error_response_func=error_list_transactions,
+    ),
+    OFFSET_COMMIT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_offset_commit,
+        error_response_func=error_offset_commit,
+    ),
+    OFFSET_DELETE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_offset_delete,
+        error_response_func=error_offset_delete,
+    ),
+    OFFSET_FETCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_offset_fetch,
+        error_response_func=error_offset_fetch,
+    ),
+    OFFSET_FOR_LEADER_EPOCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_offset_for_leader_epoch,
+        error_response_func=error_offset_for_leader_epoch,
+    ),
+    PUSH_TELEMETRY_API_KEY: RequestHandlerMeta(
+        handler_func=handle_push_telemetry,
+        error_response_func=error_push_telemetry,
+    ),
+    READ_SHARE_GROUP_STATE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_read_share_group_state,
+        error_response_func=error_read_share_group_state,
+    ),
+    READ_SHARE_GROUP_STATE_SUMMARY_API_KEY: RequestHandlerMeta(
+        handler_func=handle_read_share_group_state_summary,
+        error_response_func=error_read_share_group_state_summary,
+    ),
+    REMOVE_RAFT_VOTER_API_KEY: RequestHandlerMeta(
+        handler_func=handle_remove_raft_voter,
+        error_response_func=error_remove_raft_voter,
+    ),
+    RENEW_DELEGATION_TOKEN_API_KEY: RequestHandlerMeta(
+        handler_func=handle_renew_delegation_token,
+        error_response_func=error_renew_delegation_token,
+    ),
+    SASL_AUTHENTICATE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_sasl_authenticate,
+        error_response_func=error_sasl_authenticate,
+    ),
+    SASL_HANDSHAKE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_sasl_handshake,
+        error_response_func=error_sasl_handshake,
+    ),
+    SHARE_ACKNOWLEDGE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_share_acknowledge,
+        error_response_func=error_share_acknowledge,
+    ),
+    SHARE_FETCH_API_KEY: RequestHandlerMeta(
+        handler_func=handle_share_fetch,
+        error_response_func=error_share_fetch,
+    ),
+    SHARE_GROUP_DESCRIBE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_share_group_describe,
+        error_response_func=error_share_group_describe,
+    ),
+    SHARE_GROUP_HEARTBEAT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_share_group_heartbeat,
+        error_response_func=error_share_group_heartbeat,
     )
 }
 
