@@ -310,6 +310,24 @@ from icestream.kafkaserver.handlers.share_group_heartbeat import (
     ShareGroupHeartbeatRequestHeader,
     ShareGroupHeartbeatResponse,
 )
+from icestream.kafkaserver.handlers.stop_replica import StopReplicaRequest, StopReplicaRequestHeader, \
+    StopReplicaResponse
+from icestream.kafkaserver.handlers.sync_group import SyncGroupRequest, SyncGroupRequestHeader, SyncGroupResponse
+from icestream.kafkaserver.handlers.txn_offset_commit import TxnOffsetCommitRequest, TxnOffsetCommitRequestHeader, \
+    TxnOffsetCommitResponse
+from icestream.kafkaserver.handlers.unregister_broker import UnregisterBrokerRequest, UnregisterBrokerRequestHeader, \
+    UnregisterBrokerResponse
+from icestream.kafkaserver.handlers.update_features import UpdateFeaturesRequest, UpdateFeaturesRequestHeader, \
+    UpdateFeaturesResponse
+from icestream.kafkaserver.handlers.update_metadata import UpdateMetadataRequest, UpdateMetadataRequestHeader, \
+    UpdateMetadataResponse
+from icestream.kafkaserver.handlers.vote import VoteRequest, VoteRequestHeader, VoteResponse
+from icestream.kafkaserver.handlers.write_txn_markers import WriteTxnMarkersRequest, WriteTxnMarkersRequestHeader, \
+    WriteTxnMarkersResponse
+from icestream.kafkaserver.handlers.update_raft_voter import UpdateRaftVoterRequest, UpdateRaftVoterRequestHeader, \
+    UpdateRaftVoterResponse
+from icestream.kafkaserver.handlers.write_share_group_state import WriteShareGroupStateRequest, \
+    WriteShareGroupStateRequestHeader, WriteShareGroupStateResponse
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic
@@ -2514,4 +2532,184 @@ class Connection(KafkaHandler):
         req: ShareGroupHeartbeatRequest,
         api_version: int,
     ) -> ShareGroupHeartbeatResponse:
+        pass
+
+    async def handle_stop_replica_request(
+        self,
+        header: StopReplicaRequestHeader,
+        req: StopReplicaRequest,
+        api_version: int,
+        callback: Callable[[StopReplicaResponse], Awaitable[None]],
+    ):
+        pass
+
+    def stop_replica_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: StopReplicaRequest,
+        api_version: int,
+    ) -> StopReplicaResponse:
+        pass
+
+    async def handle_sync_group_request(
+        self,
+        header: SyncGroupRequestHeader,
+        req: SyncGroupRequest,
+        api_version: int,
+        callback: Callable[[SyncGroupResponse], Awaitable[None]],
+    ):
+        pass
+
+    def sync_group_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: SyncGroupRequest,
+        api_version: int,
+    ) -> SyncGroupResponse:
+        pass
+
+    async def handle_txn_offset_commit_request(
+        self,
+        header: TxnOffsetCommitRequestHeader,
+        req: TxnOffsetCommitRequest,
+        api_version: int,
+        callback: Callable[[TxnOffsetCommitResponse], Awaitable[None]],
+    ):
+        pass
+
+    def txn_offset_commit_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: TxnOffsetCommitRequest,
+        api_version: int,
+    ) -> TxnOffsetCommitResponse:
+        pass
+
+    async def handle_unregister_broker_request(
+        self,
+        header: UnregisterBrokerRequestHeader,
+        req: UnregisterBrokerRequest,
+        api_version: int,
+        callback: Callable[[UnregisterBrokerResponse], Awaitable[None]],
+    ):
+        pass
+
+    def unregister_broker_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: UnregisterBrokerRequest,
+        api_version: int,
+    ) -> UnregisterBrokerResponse:
+        pass
+
+    async def handle_update_features_request(
+        self,
+        header: UpdateFeaturesRequestHeader,
+        req: UpdateFeaturesRequest,
+        api_version: int,
+        callback: Callable[[UpdateFeaturesResponse], Awaitable[None]],
+    ):
+        pass
+
+    def update_features_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: UpdateFeaturesRequest,
+        api_version: int,
+    ) -> UpdateFeaturesResponse:
+        pass
+
+    async def handle_update_metadata_request(
+        self,
+        header: UpdateMetadataRequestHeader,
+        req: UpdateMetadataRequest,
+        api_version: int,
+        callback: Callable[[UpdateMetadataResponse], Awaitable[None]],
+    ):
+        pass
+
+    def update_metadata_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: UpdateMetadataRequest,
+        api_version: int,
+    ) -> UpdateMetadataResponse:
+        pass
+
+    async def handle_vote_request(
+        self,
+        header: VoteRequestHeader,
+        req: VoteRequest,
+        api_version: int,
+        callback: Callable[[VoteResponse], Awaitable[None]],
+    ):
+        pass
+
+    def vote_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: VoteRequest,
+        api_version: int,
+    ) -> VoteResponse:
+        pass
+
+    async def handle_write_txn_markers_request(
+        self,
+        header: WriteTxnMarkersRequestHeader,
+        req: WriteTxnMarkersRequest,
+        api_version: int,
+        callback: Callable[[WriteTxnMarkersResponse], Awaitable[None]],
+    ):
+        pass
+
+    def write_txn_markers_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: WriteTxnMarkersRequest,
+        api_version: int,
+    ) -> WriteTxnMarkersResponse:
+        pass
+
+    async def handle_update_raft_voter_request(
+        self,
+        header: UpdateRaftVoterRequestHeader,
+        req: UpdateRaftVoterRequest,
+        api_version: int,
+        callback: Callable[[UpdateRaftVoterResponse], Awaitable[None]],
+    ):
+        pass
+
+    def update_raft_voter_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: UpdateRaftVoterRequest,
+        api_version: int,
+    ) -> UpdateRaftVoterResponse:
+        pass
+
+    async def handle_write_share_group_state_request(
+        self,
+        header: WriteShareGroupStateRequestHeader,
+        req: WriteShareGroupStateRequest,
+        api_version: int,
+        callback: Callable[[WriteShareGroupStateResponse], Awaitable[None]],
+    ):
+        pass
+
+    def write_share_group_state_request_error_response(
+        self,
+        error_code: ErrorCode,
+        error_message: str,
+        req: WriteShareGroupStateRequest,
+        api_version: int,
+    ) -> WriteShareGroupStateResponse:
         pass

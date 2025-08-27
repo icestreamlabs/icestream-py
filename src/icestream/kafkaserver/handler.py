@@ -345,6 +345,56 @@ from icestream.kafkaserver.handlers.share_group_heartbeat import (
     ShareGroupHeartbeatRequestHeader,
     ShareGroupHeartbeatResponse,
 )
+from icestream.kafkaserver.handlers.stop_replica import (
+    StopReplicaRequest,
+    StopReplicaRequestHeader,
+    StopReplicaResponse,
+)
+from icestream.kafkaserver.handlers.sync_group import (
+    SyncGroupRequest,
+    SyncGroupRequestHeader,
+    SyncGroupResponse,
+)
+from icestream.kafkaserver.handlers.txn_offset_commit import (
+    TxnOffsetCommitRequest,
+    TxnOffsetCommitRequestHeader,
+    TxnOffsetCommitResponse,
+)
+from icestream.kafkaserver.handlers.unregister_broker import (
+    UnregisterBrokerRequest,
+    UnregisterBrokerRequestHeader,
+    UnregisterBrokerResponse,
+)
+from icestream.kafkaserver.handlers.update_features import (
+    UpdateFeaturesRequest,
+    UpdateFeaturesRequestHeader,
+    UpdateFeaturesResponse,
+)
+from icestream.kafkaserver.handlers.update_metadata import (
+    UpdateMetadataRequest,
+    UpdateMetadataRequestHeader,
+    UpdateMetadataResponse,
+)
+from icestream.kafkaserver.handlers.vote import (
+    VoteRequest,
+    VoteRequestHeader,
+    VoteResponse,
+)
+from icestream.kafkaserver.handlers.write_txn_markers import (
+    WriteTxnMarkersRequest,
+    WriteTxnMarkersRequestHeader,
+    WriteTxnMarkersResponse,
+)
+from icestream.kafkaserver.handlers.update_raft_voter import (
+    UpdateRaftVoterRequest,
+    UpdateRaftVoterRequestHeader,
+    UpdateRaftVoterResponse,
+)
+from icestream.kafkaserver.handlers.write_share_group_state import (
+    WriteShareGroupStateRequest,
+    WriteShareGroupStateRequestHeader,
+    WriteShareGroupStateResponse,
+)
 
 log = structlog.get_logger()
 
@@ -382,6 +432,16 @@ SHARE_ACKNOWLEDGE_API_KEY = 79
 SHARE_FETCH_API_KEY = 78
 SHARE_GROUP_DESCRIBE_API_KEY = 77
 SHARE_GROUP_HEARTBEAT_API_KEY = 76
+STOP_REPLICA_API_KEY = 5
+SYNC_GROUP_API_KEY = 14
+TXN_OFFSET_COMMIT_API_KEY = 28
+UNREGISTER_BROKER_API_KEY = 64
+UPDATE_FEATURES_API_KEY = 57
+UPDATE_METADATA_API_KEY = 6
+VOTE_API_KEY = 52
+WRITE_TXN_MARKERS_API_KEY = 27
+UPDATE_RAFT_VOTER_API_KEY = 82
+WRITE_SHARE_GROUP_STATE_API_KEY = 85
 CONTROLLED_SHUTDOWN_API_KEY = 7
 API_VERSIONS_API_KEY = 18
 CREATE_TOPICS_API_KEY = 19
@@ -524,7 +584,117 @@ api_compatibility: dict[int, tuple[int, int]] = {
     SHARE_FETCH_API_KEY: (0, 0),
     SHARE_GROUP_DESCRIBE_API_KEY: (0, 0),
     SHARE_GROUP_HEARTBEAT_API_KEY: (0, 0),
+    STOP_REPLICA_API_KEY: (0, 4),
+    SYNC_GROUP_API_KEY: (0, 5),
+    TXN_OFFSET_COMMIT_API_KEY: (0, 4),
+    UNREGISTER_BROKER_API_KEY: (0, 0),
+    UPDATE_FEATURES_API_KEY: (0, 1),
+    UPDATE_METADATA_API_KEY: (0, 8),
+    VOTE_API_KEY: (0, 1),
+    WRITE_TXN_MARKERS_API_KEY: (0, 1),
+    UPDATE_RAFT_VOTER_API_KEY: (0, 0),
+    WRITE_SHARE_GROUP_STATE_API_KEY: (0, 0),
 }
+
+
+async def handle_write_share_group_state(
+    handler: KafkaHandler,
+    header: WriteShareGroupStateRequestHeader,
+    req: WriteShareGroupStateRequest,
+    api_version: int,
+    respond: Callable[[WriteShareGroupStateResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_write_share_group_state_request(header, req, api_version, respond)
+
+
+async def handle_update_raft_voter(
+    handler: KafkaHandler,
+    header: UpdateRaftVoterRequestHeader,
+    req: UpdateRaftVoterRequest,
+    api_version: int,
+    respond: Callable[[UpdateRaftVoterResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_update_raft_voter_request(header, req, api_version, respond)
+
+
+async def handle_write_txn_markers(
+    handler: KafkaHandler,
+    header: WriteTxnMarkersRequestHeader,
+    req: WriteTxnMarkersRequest,
+    api_version: int,
+    respond: Callable[[WriteTxnMarkersResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_write_txn_markers_request(header, req, api_version, respond)
+
+
+async def handle_vote(
+    handler: KafkaHandler,
+    header: VoteRequestHeader,
+    req: VoteRequest,
+    api_version: int,
+    respond: Callable[[VoteResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_vote_request(header, req, api_version, respond)
+
+
+async def handle_update_metadata(
+    handler: KafkaHandler,
+    header: UpdateMetadataRequestHeader,
+    req: UpdateMetadataRequest,
+    api_version: int,
+    respond: Callable[[UpdateMetadataResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_update_metadata_request(header, req, api_version, respond)
+
+
+async def handle_update_features(
+    handler: KafkaHandler,
+    header: UpdateFeaturesRequestHeader,
+    req: UpdateFeaturesRequest,
+    api_version: int,
+    respond: Callable[[UpdateFeaturesResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_update_features_request(header, req, api_version, respond)
+
+
+async def handle_unregister_broker(
+    handler: KafkaHandler,
+    header: UnregisterBrokerRequestHeader,
+    req: UnregisterBrokerRequest,
+    api_version: int,
+    respond: Callable[[UnregisterBrokerResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_unregister_broker_request(header, req, api_version, respond)
+
+
+async def handle_txn_offset_commit(
+    handler: KafkaHandler,
+    header: TxnOffsetCommitRequestHeader,
+    req: TxnOffsetCommitRequest,
+    api_version: int,
+    respond: Callable[[TxnOffsetCommitResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_txn_offset_commit_request(header, req, api_version, respond)
+
+
+async def handle_sync_group(
+    handler: KafkaHandler,
+    header: SyncGroupRequestHeader,
+    req: SyncGroupRequest,
+    api_version: int,
+    respond: Callable[[SyncGroupResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_sync_group_request(header, req, api_version, respond)
+
+
+async def handle_stop_replica(
+    handler: KafkaHandler,
+    header: StopReplicaRequestHeader,
+    req: StopReplicaRequest,
+    api_version: int,
+    respond: Callable[[StopReplicaResponse], Awaitable[None]],
+) -> None:
+    await handler.handle_stop_replica_request(header, req, api_version, respond)
 
 
 async def handle_share_group_heartbeat(
@@ -2191,6 +2361,126 @@ def error_share_group_heartbeat(
     )
 
 
+def error_stop_replica(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: StopReplicaRequest,
+    api_version: int,
+) -> StopReplicaResponse:
+    return handler.stop_replica_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_sync_group(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: SyncGroupRequest,
+    api_version: int,
+) -> SyncGroupResponse:
+    return handler.sync_group_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_txn_offset_commit(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: TxnOffsetCommitRequest,
+    api_version: int,
+) -> TxnOffsetCommitResponse:
+    return handler.txn_offset_commit_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_unregister_broker(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: UnregisterBrokerRequest,
+    api_version: int,
+) -> UnregisterBrokerResponse:
+    return handler.unregister_broker_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_update_features(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: UpdateFeaturesRequest,
+    api_version: int,
+) -> UpdateFeaturesResponse:
+    return handler.update_features_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_update_metadata(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: UpdateMetadataRequest,
+    api_version: int,
+) -> UpdateMetadataResponse:
+    return handler.update_metadata_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_vote(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: VoteRequest,
+    api_version: int,
+) -> VoteResponse:
+    return handler.vote_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_write_txn_markers(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: WriteTxnMarkersRequest,
+    api_version: int,
+) -> WriteTxnMarkersResponse:
+    return handler.write_txn_markers_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_update_raft_voter(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: UpdateRaftVoterRequest,
+    api_version: int,
+) -> UpdateRaftVoterResponse:
+    return handler.update_raft_voter_request_error_response(
+        code, msg, req, api_version
+    )
+
+
+def error_write_share_group_state(
+    handler: KafkaHandler,
+    code: ErrorCode,
+    msg: str,
+    req: WriteShareGroupStateRequest,
+    api_version: int,
+) -> WriteShareGroupStateResponse:
+    return handler.write_share_group_state_request_error_response(
+        code, msg, req, api_version
+    )
+
+
 request_map: dict[int, RequestHandlerMeta] = {
     PRODUCE_API_KEY: RequestHandlerMeta(
         handler_func=handle_produce,
@@ -2499,6 +2789,46 @@ request_map: dict[int, RequestHandlerMeta] = {
     SHARE_GROUP_HEARTBEAT_API_KEY: RequestHandlerMeta(
         handler_func=handle_share_group_heartbeat,
         error_response_func=error_share_group_heartbeat,
+    ),
+    STOP_REPLICA_API_KEY: RequestHandlerMeta(
+        handler_func=handle_stop_replica,
+        error_response_func=error_stop_replica,
+    ),
+    SYNC_GROUP_API_KEY: RequestHandlerMeta(
+        handler_func=handle_sync_group,
+        error_response_func=error_sync_group,
+    ),
+    TXN_OFFSET_COMMIT_API_KEY: RequestHandlerMeta(
+        handler_func=handle_txn_offset_commit,
+        error_response_func=error_txn_offset_commit,
+    ),
+    UNREGISTER_BROKER_API_KEY: RequestHandlerMeta(
+        handler_func=handle_unregister_broker,
+        error_response_func=error_unregister_broker,
+    ),
+    UPDATE_FEATURES_API_KEY: RequestHandlerMeta(
+        handler_func=handle_update_features,
+        error_response_func=error_update_features,
+    ),
+    UPDATE_METADATA_API_KEY: RequestHandlerMeta(
+        handler_func=handle_update_metadata,
+        error_response_func=error_update_metadata,
+    ),
+    VOTE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_vote,
+        error_response_func=error_vote,
+    ),
+    WRITE_TXN_MARKERS_API_KEY: RequestHandlerMeta(
+        handler_func=handle_write_txn_markers,
+        error_response_func=error_write_txn_markers,
+    ),
+    UPDATE_RAFT_VOTER_API_KEY: RequestHandlerMeta(
+        handler_func=handle_update_raft_voter,
+        error_response_func=error_update_raft_voter,
+    ),
+    WRITE_SHARE_GROUP_STATE_API_KEY: RequestHandlerMeta(
+        handler_func=handle_write_share_group_state,
+        error_response_func=error_write_share_group_state,
     )
 }
 
