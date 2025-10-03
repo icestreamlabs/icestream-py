@@ -129,6 +129,7 @@ from icestream.config import Config
 from icestream.kafkaserver.protocol import decode_kafka_records
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import ParquetFile, WALFile, WALFileOffset, Partition
+from icestream.utils import wal_uri_to_object_key
 
 ListOffsetsRequestHeader = (
         ListOffsetsRequestHeaderV0
@@ -202,7 +203,7 @@ LATEST = -1
 
 
 async def _find_offset_for_timestamp_parquet(
-        store, pf: ParquetFile, ts: int, floor_offset: int
+        config: Config, pf: ParquetFile, ts: int, floor_offset: int
 ) -> Optional[Tuple[int, int]]:
     if pf.min_timestamp and pf.max_timestamp:
         min_ts = int(pf.min_timestamp.timestamp() * 1000)
@@ -211,7 +212,7 @@ async def _find_offset_for_timestamp_parquet(
             return None  # skip everything older than target
         # if min_ts >= ts we still need to read to get the first offset >= floor_offset
         # (we can't assume the very first row meets floor_offset).
-    obj = await store.get_async(pf.uri)
+    obj = await config.store.get_async(wal_uri_to_object_key(config, pf.uri))
     blob = await obj.bytes_async()
     pfq = pq.ParquetFile(io.BytesIO(bytes(blob)))
 
@@ -237,9 +238,9 @@ async def _find_offset_for_timestamp_parquet(
 
 
 async def _find_offset_for_timestamp_wal(
-        store, wf: WALFile, ts: int, floor_offset: int
+        config: Config, wf: WALFile, ts: int, floor_offset: int
 ) -> Optional[Tuple[int, int]]:
-    obj = await store.get_async(wf.uri)
+    obj = await config.store.get_async(wal_uri_to_object_key(config, wf.uri))
     data = await obj.bytes_async()
     decoded = decode_kafka_wal_file(bytes(data))
 
@@ -334,7 +335,7 @@ async def _resolve_timestamp_to_offset(
                 floor = max(floor, int(pf.max_offset) + 1)
             continue
 
-        found = await _find_offset_for_timestamp_parquet(config.store, pf, target_ts, floor)
+        found = await _find_offset_for_timestamp_parquet(config, pf, target_ts, floor)
         if found is not None:
             o, tsv = found
             return ErrorCode.none, tsv, o
@@ -352,7 +353,7 @@ async def _resolve_timestamp_to_offset(
             floor = max(floor, int(off_row.last_offset) + 1)
             continue
 
-        found = await _find_offset_for_timestamp_wal(config.store, wf, target_ts, floor)
+        found = await _find_offset_for_timestamp_wal(config, wf, target_ts, floor)
         if found is not None:
             o, tsv = found
             return ErrorCode.none, tsv, o

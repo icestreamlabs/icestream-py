@@ -5,6 +5,8 @@ from typing import List, Optional
 from io import BytesIO
 import struct
 
+import google_crc32c
+
 from icestream.kafkaserver.utils import (
     decode_signed_varint,
     decode_varint,
@@ -30,10 +32,12 @@ class KafkaRecord:
     @classmethod
     def from_bytes(cls, buf: BytesIO) -> Self:
         start_pos = buf.tell()
-        length = decode_varint(buf)
-        record_end = start_pos + length + (buf.tell() - start_pos)
+        length = decode_signed_varint(buf)
+        if length < 0:
+            raise ValueError("negative record length")
+        record_end = buf.tell() + length
 
-        attributes = struct.unpack(">B", buf.read(1))[0] # unsigned byte 0..255
+        attributes = struct.unpack(">B", buf.read(1))[0]  # unsigned byte 0..255
         timestamp_delta = decode_signed_varlong(buf)
         offset_delta = decode_signed_varint(buf)
 
@@ -70,7 +74,7 @@ class KafkaRecord:
         body = bytearray()
 
         # fixed fields
-        body += struct.pack(">B", self.attributes & 0xFF) # unsigned byte with mask to be safe
+        body += struct.pack(">B", self.attributes & 0xFF)  # unsigned byte with mask to be safe
         body += encode_signed_varlong(self.timestamp_delta)
         body += encode_signed_varint(self.offset_delta)
 
@@ -100,7 +104,8 @@ class KafkaRecord:
                 body += encode_signed_varint(len(h.value))
                 body += h.value
 
-        return encode_varint(len(body)) + bytes(body)
+        return encode_signed_varint(len(body)) + bytes(body)
+
 
 def decode_kafka_records(records_blob: bytes) -> List[KafkaRecord]:
     buf = BytesIO(records_blob)
@@ -128,7 +133,7 @@ class KafkaRecordBatch:
     records: bytes  # raw payload of [Record] section
 
     @classmethod
-    def from_records(cls, offset: int, records: List[KafkaRecord]) -> Self:
+    def from_records(cls, offset: int, records: List[KafkaRecord], attributes: int = 0) -> Self:
         # serialize records
         record_blobs = b"".join(r.to_bytes() for r in records)
 
@@ -152,7 +157,6 @@ class KafkaRecordBatch:
         partition_leader_epoch = 0
         magic = 2
         crc = 0  # you can compute CRC later if needed
-        attributes = 0
         last_offset_delta = len(records) - 1
         base_timestamp = 0
         max_timestamp = 0
@@ -217,22 +221,49 @@ class KafkaRecordBatch:
         )
 
     def to_bytes(self) -> bytes:
-        body = bytearray()
+        """
+        Serialize a v2 RecordBatch with a correct CRC32C.
 
-        body += struct.pack(">q", self.base_offset)
-        body += struct.pack(">i", self.batch_length)
-        body += struct.pack(">i", self.partition_leader_epoch)
-        body += struct.pack(">b", self.magic)
-        body += struct.pack(">I", self.crc)
-        body += struct.pack(">h", self.attributes)
-        body += struct.pack(">i", self.last_offset_delta)
-        body += struct.pack(">q", self.base_timestamp)
-        body += struct.pack(">q", self.max_timestamp)
-        body += struct.pack(">q", self.producer_id)
-        body += struct.pack(">h", self.producer_epoch)
-        body += struct.pack(">i", self.base_sequence)
-        body += struct.pack(">i", self.records_count)
+        Layout:
+          base_offset              (8)  -- NOT covered by crc
+          batch_length             (4)  -- NOT covered by crc
+          partition_leader_epoch   (4)  -- NOT covered by crc
+          magic                    (1)  -- NOT covered by crc
+          crc                      (4)  -- value over [attributes..records]
+          attributes               (2)  \
+          last_offset_delta        (4)   \
+          base_timestamp           (8)    \
+          max_timestamp            (8)     >  CRC32C region
+          producer_id              (8)    /
+          producer_epoch           (2)   /
+          base_sequence            (4)  /
+          records_count            (4) /
+          records                  (N)
+        """
+        crc_region = bytearray()
+        crc_region += struct.pack(">h", self.attributes)
+        crc_region += struct.pack(">i", self.last_offset_delta)
+        crc_region += struct.pack(">q", self.base_timestamp)
+        crc_region += struct.pack(">q", self.max_timestamp)
+        crc_region += struct.pack(">q", self.producer_id)
+        crc_region += struct.pack(">h", self.producer_epoch)
+        crc_region += struct.pack(">i", self.base_sequence)
+        crc_region += struct.pack(">i", self.records_count)
+        crc_region += self.records
 
-        body += self.records
+        crc_val = google_crc32c.value(bytes(crc_region))
 
-        return bytes(body)
+        batch_length = 4 + 1 + 4 + len(crc_region)
+
+        out = bytearray()
+        out += struct.pack(">q", self.base_offset)
+        out += struct.pack(">i", batch_length)
+        out += struct.pack(">i", self.partition_leader_epoch)
+        out += struct.pack(">b", self.magic)
+        out += struct.pack(">I", crc_val)
+        out += crc_region
+
+        self.batch_length = batch_length
+        self.crc = crc_val
+
+        return bytes(out)

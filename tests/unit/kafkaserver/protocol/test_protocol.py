@@ -136,7 +136,7 @@ def test_batch_from_records_sets_metadata_consistently():
     assert parsed.batch_length == batch.batch_length
     assert parsed.magic == 2
     assert parsed.attributes == 0
-    assert parsed.crc == 0
+    assert parsed.crc == batch.crc
 
     parsed_records = decode_kafka_records(parsed.records)
     assert len(parsed_records) == len(recs)

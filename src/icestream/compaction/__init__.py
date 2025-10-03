@@ -14,6 +14,7 @@ from icestream.kafkaserver.wal import WALFile as DecodedWALFile, WALBatch
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import WALFile as WALFileModel, Topic, ParquetFile
 from icestream.logger import log
+from icestream.utils import wal_uri_to_object_key
 
 
 class CompactorWorker:
@@ -210,17 +211,7 @@ class CompactorWorker:
             out[key] = files[:max_files]
 
     def _wal_uri_to_object_key(self, uri: str) -> str:
-        bucket = self.config.WAL_BUCKET
-        prefix = (self.config.WAL_BUCKET_PREFIX or "").strip("/")
-        # strip bucket from start
-        if uri.startswith(bucket + "/"):
-            key = uri[len(bucket) + 1:]
-        else:
-            key = uri
-        # strip prefix if set
-        if prefix and key.startswith(prefix + "/"):
-            key = key[len(prefix) + 1:]
-        return key
+        return wal_uri_to_object_key(self.config, uri)
 
 
 # currently only support Avro for schema

@@ -168,6 +168,7 @@ import pyarrow.parquet as pq
 from icestream.kafkaserver.protocol import decode_kafka_records, KafkaRecord, KafkaRecordBatch, KafkaRecordHeader
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import Partition, WALFileOffset, WALFile, ParquetFile
+from icestream.utils import wal_uri_to_object_key
 
 FetchRequestHeader = (
         FetchRequestHeaderV0
@@ -344,7 +345,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                     if remaining_bytes <= 0:
                         break
 
-                    obj = await config.store.get_async(wf.uri)
+                    obj = await config.store.get_async(wal_uri_to_object_key(config, wf.uri))
                     data = await obj.bytes_async()
                     decoded = decode_kafka_wal_file(bytes(data))
 
@@ -392,7 +393,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                                     key=r.key,
                                     value=r.value,
                                     headers=r.headers,
-                                    attributes=0,
+                                    attributes=r.attributes,
                                 )
                             )
                         if not fixed:
@@ -401,6 +402,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                         batch = KafkaRecordBatch.from_records(
                             offset=base_abs,
                             records=fixed,
+                            attributes=b.kafka_record_batch.attributes
                         )
                         raw = batch.to_bytes()
 
@@ -435,7 +437,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                         if remaining_bytes <= 0:
                             break
 
-                        obj = await config.store.get_async(pf.uri)
+                        obj = await config.store.get_async(wal_uri_to_object_key(config, pf.uri))
                         blob = await obj.bytes_async()
                         pfq = pq.ParquetFile(io.BytesIO(bytes(blob)))
 
@@ -462,7 +464,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                                         value=r["value"],
                                         headers=[KafkaRecordHeader(key=h["key"], value=h["value"])
                                                  for h in (r["headers"] or [])],
-                                        attributes=0,
+                                        attributes=0, # TODO NEED TO FIX
                                     )
                                 )
                             batch = KafkaRecordBatch.from_records(offset=base_abs, records=recs)
