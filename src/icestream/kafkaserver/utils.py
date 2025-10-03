@@ -13,6 +13,14 @@ def encode_varint(n: int) -> bytes:
             break
     return bytes(out)
 
+def encode_signed_varint(n: int) -> bytes:
+    zz = (n << 1) ^ (n >> 31)
+    return encode_varint(zz)
+
+
+def encode_signed_varlong(n: int) -> bytes:
+    zz = (n << 1) ^ (n >> 63)
+    return encode_varint(zz)
 
 def decode_varint(buf: BytesIO) -> int:
     shift = 0

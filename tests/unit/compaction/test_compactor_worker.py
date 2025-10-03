@@ -246,23 +246,29 @@ def test_maybe_pick_bucket_triggers_on_age():
 
 @pytest.mark.asyncio
 async def test_fetch_and_decode_handles_exception():
+    # config mock with everything the worker touches
     config = MagicMock()
     config.async_session_factory = MagicMock(
         return_value=MagicMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
     )
     config.COMPACTION_INTERVAL = 0
-
-    wal = MagicMock(spec=WALFile)
-    wal.total_bytes = 100
-    wal.uri = "s3://missing"
-    wal.id = 1
-
+    config.WAL_BUCKET = "bucket"
+    config.WAL_BUCKET_PREFIX = "prefix"
+    config.store = MagicMock()
     config.store.get_async = AsyncMock(side_effect=Exception("fetch failed"))
+
+    # wal model the method consumes
+    wal = MagicMock()
+    wal.uri = "bucket/prefix/missing"
+    wal.id = 1
 
     worker = CompactorWorker(config, processors=[])
 
     with pytest.raises(Exception, match="fetch failed"):
         await worker._fetch_and_decode([wal])
+
+    # ensure it tried to fetch the right object key
+    config.store.get_async.assert_awaited_once_with("missing")
 
 
 @pytest.mark.asyncio
@@ -395,6 +401,8 @@ async def test_parquet_candidates_triggered_by_age():
 @pytest.mark.asyncio
 async def test_fetch_and_decode_raises_on_failure():
     config = MagicMock()
+    config.WAL_BUCKET = "bucket"
+    config.WAL_BUCKET_PREFIX = "prefix"
     config.store.get_async = AsyncMock(side_effect=Exception("fetch error"))
 
     wal = MagicMock(uri="s3://bad/path", id=1)

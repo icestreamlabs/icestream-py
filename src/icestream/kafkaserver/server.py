@@ -66,7 +66,7 @@ from icestream.kafkaserver.handlers.produce import (
 )
 from icestream.kafkaserver.handlers.create_topics import CreateTopicsRequest, CreateTopicsRequestHeader, \
     CreateTopicsResponse
-from icestream.kafkaserver.handlers.fetch import FetchRequest, FetchRequestHeader, FetchResponse
+from icestream.kafkaserver.handlers.fetch import FetchRequest, FetchRequestHeader, FetchResponse, do_fetch
 from icestream.kafkaserver.handlers.add_offsets_to_txn import AddOffsetsToTxnRequest, AddOffsetsToTxnRequestHeader, \
     AddOffsetsToTxnResponse
 from icestream.kafkaserver.handlers.add_partitions_to_txn import AddPartitionsToTxnRequest, \
@@ -223,7 +223,7 @@ from icestream.kafkaserver.handlers.list_groups import (
 from icestream.kafkaserver.handlers.list_offsets import (
     ListOffsetsRequest,
     ListOffsetsRequestHeader,
-    ListOffsetsResponse,
+    ListOffsetsResponse, do_list_offsets,
 )
 from icestream.kafkaserver.handlers.list_partition_reassignments import (
     ListPartitionReassignmentsRequest,
@@ -1227,7 +1227,8 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[FetchResponse], Awaitable[None]],
     ) -> FetchResponse:
-        pass
+        resp = await do_fetch(self.server.config, req, api_version)
+        await callback(resp)
 
     def fetch_request_error_response(
         self,
@@ -2235,7 +2236,8 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[ListOffsetsResponse], Awaitable[None]],
     ):
-        pass
+        resp = await do_list_offsets(self.server.config, req, api_version)
+        await callback(resp)
 
     def list_offsets_request_error_response(
         self,

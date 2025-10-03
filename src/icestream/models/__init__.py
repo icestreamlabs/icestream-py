@@ -46,6 +46,7 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
 
@@ -122,6 +123,9 @@ class WALFileOffset(Base, BigIntIdMixin):
     byte_start: Mapped[int] = mapped_column(BigInteger, nullable=False)
     byte_end: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
+    min_timestamp: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    max_timestamp: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+
     wal_file: Mapped["WALFile"] = relationship(back_populates="wal_file_offsets")
 
     partition: Mapped["Partition"] = relationship(
@@ -140,6 +144,13 @@ class WALFileOffset(Base, BigIntIdMixin):
             ondelete="CASCADE",
         ),
         Index("ix_wal_file_offset_topic_partition", "topic_name", "partition_number"),
+        Index(
+            "ix_wal_file_offset_topic_part_ts",
+            "topic_name",
+            "partition_number",
+            "min_timestamp",
+            "max_timestamp",
+        ),
     )
 
 

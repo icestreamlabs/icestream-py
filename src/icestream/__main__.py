@@ -59,7 +59,7 @@ async def run():
         )
 
         if config.ENABLE_COMPACTION:
-            compaction_worker = CompactorWorker(config, [WalToParquetProcessor])
+            compaction_worker = CompactorWorker(config, [WalToParquetProcessor()])
             compaction_worker_handle = asyncio.create_task(compaction_worker.run())
 
         done, pending = await asyncio.wait(

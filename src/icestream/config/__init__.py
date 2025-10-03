@@ -25,6 +25,9 @@ ObjectStore: TypeAlias = (
 
 class Config:
     def __init__(self):
+        # broker
+        self.BROKER_ID = os.getenv("ICESTREAM_BROKER_ID", "unknown")
+
         # db
         self.DATABASE_URL = os.getenv(
             "ICESTREAM_DATABASE_URL", "sqlite+aiosqlite:///:memory:"
@@ -46,9 +49,9 @@ class Config:
         self.store: ObjectStore = MemoryStore()
 
         # wal
-        self.FLUSH_INTERVAL = int(os.getenv("ICESTREAM_FLUSH_INTERVAL", 2))
+        self.FLUSH_INTERVAL = float(os.getenv("ICESTREAM_FLUSH_INTERVAL", 2))
         self.FLUSH_SIZE = int(os.getenv("ICESTREAM_FLUSH_SIZE", 100 * 1024 * 1024))
-        self.FLUSH_MAX_BATCHES = int(os.getenv("ICESTREAM_FLUSH_MAX_BATCHES", None))
+        self.FLUSH_TIMEOUT = float(os.getenv("ICESTREAM_FLUSH_TIMEOUT", 30))
 
         # compaction (technically just processing and writing to parquet)
         self.ENABLE_COMPACTION = (
@@ -127,7 +130,7 @@ class Config:
         url = make_url(self.DATABASE_URL)
 
         engine_options: dict[str, Any] = {
-            "echo": True,
+            "echo": False,
             "future": True,
         }
 

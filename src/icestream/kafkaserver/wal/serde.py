@@ -6,7 +6,7 @@ from typing import List
 from icestream.kafkaserver.protocol import (
     KafkaRecordBatch,
     KafkaRecordHeader,
-    KafkaRecord,
+    KafkaRecord, decode_kafka_records,
 )
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.utils import encode_varint, decode_varint
@@ -94,6 +94,14 @@ def encode_kafka_wal_file_with_offsets(
         buf.write(record_batch_bytes)
         byte_end = buf.tell()
 
+        now_ts = int(time.time() * 1000)
+        min_ts = now_ts
+        max_ts = now_ts
+
+        if rb.base_timestamp != 0 and rb.max_timestamp != 0:
+            min_ts = rb.base_timestamp
+            max_ts = rb.max_timestamp
+
         offset_metadata.append(
             {
                 "topic": batch.topic,
@@ -102,6 +110,8 @@ def encode_kafka_wal_file_with_offsets(
                 "last_offset": rb.base_offset + rb.last_offset_delta,
                 "byte_start": byte_start,
                 "byte_end": byte_end,
+                "min_timestamp": min_ts,
+                "max_timestamp": max_ts,
             }
         )
 

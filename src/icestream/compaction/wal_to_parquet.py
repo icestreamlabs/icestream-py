@@ -12,22 +12,6 @@ from icestream.compaction.schema import PARQUET_RECORD_SCHEMA
 from icestream.kafkaserver.protocol import decode_kafka_records
 from icestream.models import ParquetFile, ParquetFileSource, assert_no_overlap
 
-PARQUET_RECORD_MAPPING = {
-    "partition": pa.int32(),
-    "offset": pa.int64(),
-    "timestamp_ms": pa.int64(),
-    "key": pa.binary(),
-    "value": pa.binary(),
-    "headers": pa.list_(
-        pa.struct(
-            [
-                ("key", pa.string()),
-                ("value", pa.binary()),
-            ]
-        )
-    ),
-}
-
 
 class WalToParquetProcessor(CompactionProcessor):
     async def apply(self, ctx: CompactionContext) -> None:
@@ -80,16 +64,16 @@ class WalToParquetProcessor(CompactionProcessor):
                             "key": rec.key,
                             "value": rec.value,
                             "headers": [
-                                {"key": h.key, "value": h.value} for h in rec.headers
-                            ]
-                            or None,
+                                           {"key": h.key, "value": h.value} for h in rec.headers
+                                       ]
+                                       or None,
                         }
                     )
 
         return buckets
 
     async def _flush_buckets(
-        self, ctx: CompactionContext, topic: str, partition: int, rows: List[dict]
+            self, ctx: CompactionContext, topic: str, partition: int, rows: List[dict]
     ):
         target_bytes = ctx.config.PARQUET_TARGET_FILE_BYTES
 
@@ -107,7 +91,7 @@ class WalToParquetProcessor(CompactionProcessor):
             await self._flush_chunk(ctx, topic, partition, chunk)
 
     async def _flush_chunk(
-        self, ctx: CompactionContext, topic: str, partition: int, chunk_rows: List[dict]
+            self, ctx: CompactionContext, topic: str, partition: int, chunk_rows: List[dict]
     ):
         if not chunk_rows:
             return
@@ -150,8 +134,8 @@ class WalToParquetProcessor(CompactionProcessor):
         )
 
         key = (
-            ctx.config.PARQUET_PREFIX.rstrip("/")
-            + f"/topics/{topic}/partition={partition}/{min_off}-{max_off}-gen0.parquet"
+                ctx.config.PARQUET_PREFIX.rstrip("/")
+                + f"/topics/{topic}/partition={partition}/{min_off}-{max_off}-gen0.parquet"
         )
         await ctx.config.store.put_async(key, io.BytesIO(data))
 

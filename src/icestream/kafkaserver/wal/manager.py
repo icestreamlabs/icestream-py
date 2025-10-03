@@ -41,19 +41,15 @@ class WALManager:
         self.flush_semaphore = asyncio.Semaphore(self.config.MAX_IN_FLIGHT_FLUSHES)
         self.pending_flushes: set[asyncio.Task] = set()
 
-        self._max_batches = getattr(self.config, "FLUSH_MAX_BATCHES", None)
-        self._flush_timeout = float(getattr(self.config, "FLUSH_TIMEOUT", 60.0))
+        self._flush_timeout = self.config.FLUSH_TIMEOUT
 
         log.info(
             "WALManager initialized",
             extra={
-                "flush_size": getattr(self.config, "FLUSH_SIZE", None),
-                "flush_interval": getattr(self.config, "FLUSH_INTERVAL", None),
-                "max_in_flight_flushes": getattr(
-                    self.config, "MAX_IN_FLIGHT_FLUSHES", None
-                ),
-                "flush_max_batches": self._max_batches,
-                "flush_timeout_s": self._flush_timeout,
+                "flush_size": self.config.FLUSH_SIZE,
+                "flush_interval": self.config.FLUSH_INTERVAL,
+                "max_in_flight_flushes": self.config.MAX_IN_FLIGHT_FLUSHES,
+                "flush_timeouts": self._flush_timeout,
             },
         )
 
@@ -98,8 +94,6 @@ class WALManager:
             should_flush = (
                 self.config.FLUSH_SIZE is not None
                 and self.buffer_size >= self.config.FLUSH_SIZE
-            ) or (
-                self._max_batches is not None and self.buffer_count >= self._max_batches
             )
             if should_flush:
                 await self._launch_flush()
@@ -172,7 +166,7 @@ class WALManager:
         try:
             async with self.flush_semaphore:
                 t0 = self.time_source()
-                broker_id = getattr(self.config, "BROKER_ID", "unknown")
+                broker_id = self.config.BROKER_ID
 
                 encoded, offsets = encode_kafka_wal_file_with_offsets(
                     batch_to_flush, broker_id
@@ -195,7 +189,6 @@ class WALManager:
                 put_result = await self.config.store.put_async(
                     path=object_key,
                     file=BytesIO(encoded),
-                    use_multipart=encoded_len > 5 * 1024 * 1024,
                 )
                 upload_ms = int((self.time_source() - t1) * 1000)
 
@@ -212,7 +205,7 @@ class WALManager:
                 async with self.config.async_session_factory() as session:
                     wal_file = WALFile(
                         uri=uri,
-                        etag=getattr(put_result, "etag", None),
+                        etag=put_result["e_tag"],
                         total_bytes=encoded_len,
                         total_messages=total_records,
                     )
@@ -228,6 +221,8 @@ class WALManager:
                             last_offset=o["last_offset"],
                             byte_start=o["byte_start"],
                             byte_end=o["byte_end"],
+                            min_timestamp=o["min_timestamp"],
+                            max_timestamp=o["max_timestamp"]
                         )
                         session.add(wal_file_offset)
 
@@ -248,7 +243,7 @@ class WALManager:
                         "upload_ms": upload_ms,
                         "db_ms": db_ms,
                         "total_ms": total_ms,
-                        "etag": getattr(put_result, "etag", None),
+                        "etag": put_result["e_tag"]
                     },
                 )
 
@@ -259,7 +254,7 @@ class WALManager:
                     item.flush_result.set_exception(e)
 
     def _build_wal_uri(self, object_key: str) -> str:
-        prefix = getattr(self.config, "WAL_BUCKET_PREFIX", None)
+        prefix = self.config.WAL_BUCKET_PREFIX
         if prefix:
             return f"{self.config.WAL_BUCKET}/{prefix}/{object_key}"
         return f"{self.config.WAL_BUCKET}/{object_key}"

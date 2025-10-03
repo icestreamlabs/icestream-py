@@ -6,7 +6,7 @@ from typing import Sequence
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from icestream.compaction.types import CompactionProcessor, CompactionContext
 from icestream.config import Config
@@ -18,10 +18,10 @@ from icestream.logger import log
 
 class CompactorWorker:
     def __init__(
-        self,
-        config: Config,
-        processors: list[CompactionProcessor],
-        time_source=time.monotonic,
+            self,
+            config: Config,
+            processors: list[CompactionProcessor],
+            time_source=time.monotonic,
     ):
         self.config = config
         self.time_source = time_source
@@ -77,39 +77,58 @@ class CompactorWorker:
     async def _select_wal_models(self, session) -> tuple[Sequence[WALFileModel], int]:
         total_bytes = 0
         selected: list[WALFileModel] = []
+        seen_ids: set[int] = set()
+
         while (
-            total_bytes < self.config.MAX_COMPACTION_BYTES
-            and len(selected) < self.config.MAX_COMPACTION_WAL_FILES
+                total_bytes < self.config.MAX_COMPACTION_BYTES
+                and len(selected) < self.config.MAX_COMPACTION_WAL_FILES
         ):
             limit = min(
                 self.config.MAX_COMPACTION_SELECT_LIMIT,
                 self.config.MAX_COMPACTION_WAL_FILES - len(selected),
             )
-            result = await session.execute(
-                select(WALFileModel)
-                .options(joinedload(WALFileModel.wal_file_offsets))
-                .where(WALFileModel.compacted_at.is_(None))
+
+            id_rows = await session.scalars(
+                select(WALFileModel.id)
+                .where(
+                    WALFileModel.compacted_at.is_(None),
+                    ~WALFileModel.id.in_(seen_ids)
+                )
+                .order_by(WALFileModel.id)
                 .with_for_update(skip_locked=True)
                 .limit(limit)
             )
-            batch = result.scalars().all()
-            if not batch:
+            ids = list(id_rows)
+            if not ids:
                 break
-            for wal in batch:
+            seen_ids.update(ids)
+
+            models = (
+                await session.execute(
+                    select(WALFileModel)
+                    .options(selectinload(WALFileModel.wal_file_offsets))
+                    .where(WALFileModel.id.in_(ids))
+                    .order_by(WALFileModel.id)
+                )
+            ).scalars().all()
+
+            for wal in models:
                 if len(selected) >= self.config.MAX_COMPACTION_WAL_FILES:
                     break
                 if total_bytes + wal.total_bytes > self.config.MAX_COMPACTION_BYTES:
-                    break
+                    continue
                 selected.append(wal)
                 total_bytes += wal.total_bytes
+
         return selected, total_bytes
 
     async def _fetch_and_decode(
-        self, wal_models: Sequence[WALFileModel]
+            self, wal_models: Sequence[WALFileModel]
     ) -> list[DecodedWALFile]:
         decoded: list[DecodedWALFile] = []
         for wal in wal_models:
-            get_result = await self.config.store.get_async(wal.uri)
+            object_key = self._wal_uri_to_object_key(wal.uri)
+            get_result = await self.config.store.get_async(object_key)
             data = await get_result.bytes_async()
             decoded_file = decode_kafka_wal_file(bytes(data))
             decoded_file.id = wal.id  # type: ignore[attr-defined]
@@ -165,7 +184,7 @@ class CompactorWorker:
 
     @staticmethod
     def _maybe_pick_bucket(
-        out, key, files, now, target_bytes, min_files, max_files, force_age_sec
+            out, key, files, now, target_bytes, min_files, max_files, force_age_sec
     ):
         if not files:
             return
@@ -184,11 +203,24 @@ class CompactorWorker:
         oldest = files[0]
         oldest_ts = oldest.created_at or oldest.updated_at
         if (
-            oldest_ts
-            and (now - oldest_ts).total_seconds() >= force_age_sec
-            and len(files) >= min_files
+                oldest_ts
+                and (now - oldest_ts).total_seconds() >= force_age_sec
+                and len(files) >= min_files
         ):
             out[key] = files[:max_files]
+
+    def _wal_uri_to_object_key(self, uri: str) -> str:
+        bucket = self.config.WAL_BUCKET
+        prefix = (self.config.WAL_BUCKET_PREFIX or "").strip("/")
+        # strip bucket from start
+        if uri.startswith(bucket + "/"):
+            key = uri[len(bucket) + 1:]
+        else:
+            key = uri
+        # strip prefix if set
+        if prefix and key.startswith(prefix + "/"):
+            key = key[len(prefix) + 1:]
+        return key
 
 
 # currently only support Avro for schema
@@ -213,4 +245,5 @@ def build_uri(config, key: str) -> str:
     bucket_prefix = (
         f"/{config.WAL_BUCKET_PREFIX.strip('/')}" if config.WAL_BUCKET_PREFIX else ""
     )
-    return f"s3://{config.WAL_BUCKET}{bucket_prefix}/{key}"
+    return f"{bucket_prefix}/{key}"
+

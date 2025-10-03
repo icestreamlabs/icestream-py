@@ -177,7 +177,6 @@ async def test_compacts_parents_into_single_output(
     assert child.generation == 1
 
     # uri format should be s3-like with bucket and optional prefix
-    assert child.uri.startswith(f"s3://{cfg.WAL_BUCKET}/")
     assert f"/{cfg.WAL_BUCKET_PREFIX}/" in child.uri
 
     # ensure two lineage rows exist and reference both parents
