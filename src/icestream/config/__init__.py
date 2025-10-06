@@ -27,6 +27,9 @@ class Config:
     def __init__(self):
         # broker
         self.BROKER_ID = os.getenv("ICESTREAM_BROKER_ID", "unknown")
+        self.PORT = int(os.getenv("ICESTREAM_PORT", 9092))
+        self.ADVERTISED_HOST = os.getenv("ICESTREAM_ADVERTISED_HOST", "localhost")
+        self.ADVERTISED_PORT = int(os.getenv("ICESTREAM_ADVERTISED_PORT", 9092))
 
         # db
         self.DATABASE_URL = os.getenv(

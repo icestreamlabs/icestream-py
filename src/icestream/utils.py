@@ -1,3 +1,7 @@
+import datetime
+
+from kio.static.primitive import i32Timedelta
+
 from icestream.config import Config
 
 
@@ -13,3 +17,6 @@ def wal_uri_to_object_key(config: Config, uri: str) -> str:
     if prefix and key.startswith(prefix + "/"):
         key = key[len(prefix) + 1:]
     return key
+
+def zero_throttle():
+    return i32Timedelta.parse(datetime.timedelta(milliseconds=0))

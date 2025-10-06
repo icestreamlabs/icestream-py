@@ -816,8 +816,5 @@ def do_response_ladder(resp: FetchResponse, api_version: int) -> FetchResponse:
             session_id=resp.session_id,
         )
 
-    elif api_version == 11:
-        return resp
-
     else:
-        raise ValueError(f"unsupported fetch api version: {api_version}")
+        return resp

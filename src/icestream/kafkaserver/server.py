@@ -341,7 +341,7 @@ class Server:
         self.config = config
         self.produce_queue = queue
 
-    async def run(self, host: str = "127.0.0.1", port: int = 9092):
+    async def run(self, host: str = "0.0.0.0", port: int = 9092):
         try:
             self.listener = await asyncio.start_server(Connection(self), host, port)
             log.info(f"Server started listening on {host}:{port}")
