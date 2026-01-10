@@ -209,6 +209,7 @@ from icestream.kafkaserver.handlers.leave_group import (
     LeaveGroupRequest,
     LeaveGroupRequestHeader,
     LeaveGroupResponse,
+    do_leave_group,
 )
 from icestream.kafkaserver.handlers.list_client_metrics_resources import (
     ListClientMetricsResourcesRequest,
@@ -2197,7 +2198,30 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[LeaveGroupResponse], Awaitable[None]],
     ):
-        pass
+        log.info(
+            "handling leave group request",
+            group_id=req.group_id,
+            api_version=api_version,
+        )
+        try:
+            resp = await do_leave_group(self.server.config, req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "leave group request failed",
+                group_id=req.group_id,
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.leave_group_request_error_response(
+                ErrorCode.unknown_server_error,
+                "leave group handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def leave_group_request_error_response(
         self,
@@ -2206,7 +2230,14 @@ class Connection(KafkaHandler):
         req: LeaveGroupRequest,
         api_version: int,
     ) -> LeaveGroupResponse:
-        pass
+        mod = load_payload_module(13, api_version, EntityType.response)
+        fields = getattr(mod.LeaveGroupResponse, "__dataclass_fields__", {})
+        kwargs = {"error_code": error_code}
+        if "throttle_time" in fields:
+            kwargs["throttle_time"] = zero_throttle()
+        if "members" in fields:
+            kwargs["members"] = tuple()
+        return mod.LeaveGroupResponse(**kwargs)
 
     async def handle_list_client_metrics_resources_request(
         self,
