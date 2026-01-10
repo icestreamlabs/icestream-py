@@ -14,6 +14,7 @@ from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.wal.manager import WALManager
+from icestream.kafkaserver.consumer_group_liveness import run_consumer_group_reaper
 from icestream.logger import log
 
 
@@ -23,6 +24,7 @@ async def run():
     api_handle = None
     wal_manager_handle = None
     compaction_worker_handle = None
+    group_reaper_handle = None
 
     def _signal_handler(*_):
         log.warning("shutdown signal received")
@@ -46,6 +48,9 @@ async def run():
 
         server = Server(config=config, queue=queue)
         server_handle = asyncio.create_task(server.run())
+        group_reaper_handle = asyncio.create_task(
+            run_consumer_group_reaper(config, shutdown_event)
+        )
 
         admin_api = AdminApi(config)
         hypercorn_config = HypercornConfig()
@@ -62,16 +67,17 @@ async def run():
             compaction_worker = CompactorWorker(config, [WalToParquetProcessor()])
             compaction_worker_handle = asyncio.create_task(compaction_worker.run())
 
-        done, pending = await asyncio.wait(
-            [
-                server_handle,
-                api_handle,
-                wal_manager_handle,
-                compaction_worker_handle,
-                asyncio.create_task(shutdown_event.wait()),
-            ],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
+        wait_handles = [
+            server_handle,
+            api_handle,
+            wal_manager_handle,
+            group_reaper_handle,
+            asyncio.create_task(shutdown_event.wait()),
+        ]
+        if config.ENABLE_COMPACTION and compaction_worker_handle:
+            wait_handles.append(compaction_worker_handle)
+
+        done, pending = await asyncio.wait(wait_handles, return_when=asyncio.FIRST_COMPLETED)
 
         if not shutdown_event.is_set():
             log.warning("task finished unexpectedly, initiating shutdown")
@@ -83,8 +89,8 @@ async def run():
         log.exception(f"error during server setup or runtime {e}")
     finally:
         log.info("shutting down")
-        handles = [server_handle, api_handle, wal_manager_handle]
-        if config.ENABLE_COMPACTION:
+        handles = [server_handle, api_handle, wal_manager_handle, group_reaper_handle]
+        if config.ENABLE_COMPACTION and compaction_worker_handle:
             handles.append(compaction_worker_handle)
         for task in handles:
             if task and not task.done():

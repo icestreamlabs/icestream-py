@@ -176,8 +176,8 @@ async def test_compacts_parents_into_single_output(
     assert child.min_offset == 0 and child.max_offset == 9
     assert child.generation == 1
 
-    # uri format should be s3-like with bucket and optional prefix
-    assert f"/{cfg.WAL_BUCKET_PREFIX}/" in child.uri
+    # uri now stores object key without bucket/prefix
+    assert child.uri == "parquet/topics/orders/partition=3/0-9-gen1.parquet"
 
     # ensure two lineage rows exist and reference both parents
     assert len(lineage) == 2

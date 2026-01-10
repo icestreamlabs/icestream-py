@@ -9,6 +9,7 @@ from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.wal.serde import encode_kafka_wal_file_with_offsets
 from icestream.logger import log
 from icestream.models import WALFile, WALFileOffset
+from icestream.utils import normalize_object_key
 
 
 def default_size_estimator(item: ProduceTopicPartitionData) -> int:
@@ -192,7 +193,7 @@ class WALManager:
                 )
                 upload_ms = int((self.time_source() - t1) * 1000)
 
-                uri = self._build_wal_uri(object_key)
+                uri = normalize_object_key(self.config, object_key)
 
                 total_records = 0
                 for o in offsets:
@@ -252,12 +253,6 @@ class WALManager:
             for item in batch_to_flush:
                 if not item.flush_result.done():
                     item.flush_result.set_exception(e)
-
-    def _build_wal_uri(self, object_key: str) -> str:
-        prefix = self.config.WAL_BUCKET_PREFIX
-        if prefix:
-            return f"{self.config.WAL_BUCKET}/{prefix}/{object_key}"
-        return f"{self.config.WAL_BUCKET}/{object_key}"
 
     @staticmethod
     def _generate_object_key(*, broker_id: str = "unknown") -> str:

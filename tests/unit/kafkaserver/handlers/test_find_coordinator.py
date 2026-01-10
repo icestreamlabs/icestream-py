@@ -12,7 +12,6 @@ def _make_req(key_type: int, keys: tuple[str, ...]) -> FindCoordinatorRequest:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("key_type,keys", [
     (0, ("group-a",)),
-    (1, ("txn-abc",)),
 ])
 async def test_single_key_returns_coordinator_ok(config, key_type, keys):
     req = _make_req(key_type, keys)
@@ -27,6 +26,14 @@ async def test_single_key_returns_coordinator_ok(config, key_type, keys):
     assert int(coordinator.node_id) == 0
     assert coordinator.error_code == ErrorCode.none
     assert coordinator.error_message is None
+
+
+@pytest.mark.asyncio
+async def test_unsupported_key_type_returns_error(config):
+    req = _make_req(1, ("txn-abc",))
+    resp = await do_find_coordinator(config, req, api_version=6)
+    assert len(resp.coordinators) == 1
+    assert resp.coordinators[0].error_code == ErrorCode.coordinator_not_available
 
 @pytest.mark.asyncio
 async def test_empty_keys_returns_error(config):

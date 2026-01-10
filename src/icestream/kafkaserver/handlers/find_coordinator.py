@@ -178,6 +178,19 @@ async def do_find_coordinator(config: Config, req: FindCoordinatorRequest, api_v
             error_message="no coordinator key"
         ))
         return do_response(tuple(coordinators), api_version)
+    if key_type in (1, 2):
+        for k in keys or ("",):
+            coordinators.append(
+                fc_v6.response.Coordinator(
+                    key=k,
+                    node_id=BrokerId(-1),
+                    host="",
+                    port=i32(0),
+                    error_code=ErrorCode.coordinator_not_available,
+                    error_message="coordinator unavailable",
+                )
+            )
+        return do_response(tuple(coordinators), api_version)
     if not keys:
         coordinators.append(
             fc_v6.response.Coordinator(

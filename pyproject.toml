@@ -41,9 +41,18 @@ where = ["src"]
 [tool.setuptools_scm]
 version_scheme = "post-release"
 
+[tool.coverage.run]
+omit = [
+    "src/icestream/__main__.py",
+    "src/icestream/admin/*",
+    "src/icestream/alembic/*",
+    "src/icestream/kafkaserver/server.py",
+]
+
 [project.optional-dependencies]
 dev = [
     "aiokafka>=0.12.0",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.2.0",
 ]

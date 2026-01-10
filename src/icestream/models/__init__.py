@@ -30,7 +30,7 @@ class IntIdMixin:
 
 class BigIntIdMixin:
     id: Mapped[int] = mapped_column(
-        BigInteger().with_variant(Integer, "sqlite"),
+        BigInteger,
         Identity(always=True),
         primary_key=True,
     )

@@ -1,10 +1,16 @@
 import datetime
+import os
 from asyncio import StreamWriter, Queue
 from typing import Dict
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
+import pytest_asyncio
+from kio.static._phantom import Phantom
+from kio.static.primitive import i32Timedelta
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from icestream.config import Config
 from icestream.db import run_migrations
@@ -62,11 +68,45 @@ def handler(base_config):
     return handler
 
 
-@pytest.fixture
-async def config():
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def _freeze_mockgres_snapshot(_ensure_test_db) -> None:
+    if os.getenv("ICESTREAM_USING_MOCKGRES") != "1":
+        return
     config = Config()
+    assert config.engine is not None
+    async with config.engine.connect() as conn:
+        async with conn.begin():
+            await conn.execute(text("SELECT mockgres_freeze()"))
+    await config.engine.dispose()
+
+
+@pytest.fixture
+async def config(_freeze_mockgres_snapshot) -> Config:
+    config = Config()
+    if os.getenv("ICESTREAM_USING_MOCKGRES") == "1":
+        assert config.engine is not None
+        conn = await config.engine.connect()
+        async with conn.begin():
+            await conn.execute(text("SELECT mockgres_reset()"))
+        config.async_session_factory = async_sessionmaker(
+            bind=conn,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+        try:
+            yield config
+        finally:
+            await conn.close()
+            await config.engine.dispose()
+        return
+
     await run_migrations(config)
-    return config
+    try:
+        yield config
+    finally:
+        if config.engine is not None:
+            await config.engine.dispose()
+
 
 def ts_ms(dtobj: datetime.datetime) -> int:
     return int(dtobj.timestamp() * 1000)
@@ -157,13 +197,11 @@ async def insert_parquet_file(
 
 @pytest.fixture
 async def seeded_topics(config: Config) -> Dict[str, Dict]:
-    """
-    creates 4 topics with data in db and object store:
-      1) mixed            : compacted wal + non-compacted wal + parquet
-      2) compacted_only   : compacted wal + parquet
-      3) wal_only         : non-compacted wal only
-      4) empty            : no wal/parquet
-    """
+    # creates 4 topics with data in db and object store:
+    #   1) mixed            : compacted wal + non-compacted wal + parquet
+    #   2) compacted_only   : compacted wal + parquet
+    #   3) wal_only         : non-compacted wal only
+    #   4) empty            : no wal/parquet
     base_time = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
 
     async with config.async_session_factory() as session:
@@ -260,3 +298,6 @@ async def seeded_topics(config: Config) -> Dict[str, Dict]:
         "wal_only": {"topic": "wal_only", "partition": 0, "base_time": base_time},
         "empty": {"topic": "empty", "partition": 0, "base_time": base_time},
     }
+
+def i32timedelta_from_ms(ms: int = 0) -> Phantom:
+    return i32Timedelta.parse(datetime.timedelta(milliseconds=ms))

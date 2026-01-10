@@ -47,7 +47,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from icestream.config import Config
-from icestream.kafkaserver.handler import api_compatibility, handle_kafka_request
+from icestream.kafkaserver.handler import advertised_api_compatibility, handle_kafka_request
 from icestream.kafkaserver.handlers import KafkaHandler
 from icestream.kafkaserver.handlers.api_versions import (
     ApiVersionsRequest,
@@ -312,7 +312,12 @@ from icestream.kafkaserver.handlers.share_group_heartbeat import (
 )
 from icestream.kafkaserver.handlers.stop_replica import StopReplicaRequest, StopReplicaRequestHeader, \
     StopReplicaResponse
-from icestream.kafkaserver.handlers.sync_group import SyncGroupRequest, SyncGroupRequestHeader, SyncGroupResponse
+from icestream.kafkaserver.handlers.sync_group import (
+    SyncGroupRequest,
+    SyncGroupRequestHeader,
+    SyncGroupResponse,
+    do_sync_group,
+)
 from icestream.kafkaserver.handlers.txn_offset_commit import TxnOffsetCommitRequest, TxnOffsetCommitRequestHeader, \
     TxnOffsetCommitResponse
 from icestream.kafkaserver.handlers.unregister_broker import UnregisterBrokerRequest, UnregisterBrokerRequestHeader, \
@@ -331,6 +336,7 @@ from icestream.kafkaserver.handlers.write_share_group_state import WriteShareGro
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic
+from icestream.utils import zero_throttle
 
 log = structlog.get_logger()
 
@@ -403,20 +409,31 @@ class Connection(KafkaHandler):
 
             for partition in topic.partition_data:
                 partition_idx = partition.index
-                record_count = 0
                 records = partition.records
-                if records is not None:
-                    record_count = int(struct.unpack(">I", records[57:61])[0])
-                magic = records[16]
                 error_code: ErrorCode | None = None
-                if magic != 2:
+                record_count = 0
+                parsed_batch: KafkaRecordBatch | None = None
+
+                try:
+                    if records is not None:
+                        parsed_batch = KafkaRecordBatch.from_bytes(records)
+                        record_count = parsed_batch.records_count
+                except Exception:
+                    log.exception(
+                        "failed to parse produce record batch",
+                        extra={"topic": topic_name, "partition": partition_idx},
+                    )
+                    error_code = ErrorCode.invalid_record
+
+                if parsed_batch is None and records is not None and error_code is None:
+                    error_code = ErrorCode.invalid_record
+
+                if parsed_batch is not None and parsed_batch.magic != 2:
                     error_code = ErrorCode.unsupported_for_message_format
                     partition_response = produce_v8.response.PartitionProduceResponse(
                         index=i32(partition_idx),
-                        error_code=ErrorCode.none if error_code is None else error_code,
-                        base_offset=i64(
-                            -1
-                        ),  # magic number wrong, so no offsets assigned
+                        error_code=error_code,
+                        base_offset=i64(-1),
                         log_append_time=None,
                         log_start_offset=i64(-1),
                         record_errors=(),
@@ -424,8 +441,6 @@ class Connection(KafkaHandler):
                     )
                     partition_responses.append(partition_response)
                     continue
-
-                log.info("produce", records=records[61:])
 
                 log.info(
                     "produce",
@@ -490,7 +505,7 @@ class Connection(KafkaHandler):
                 produce_topic_partition_data = ProduceTopicPartitionData(
                     topic=topic_name,
                     partition=partition_idx,
-                    kafka_record_batch=KafkaRecordBatch.from_bytes(records),
+                    kafka_record_batch=parsed_batch if parsed_batch else KafkaRecordBatch.from_bytes(records),
                     flush_result=partition_flush_result_fut,
                 )
                 await self.server.produce_queue.put(produce_topic_partition_data)
@@ -1068,7 +1083,7 @@ class Connection(KafkaHandler):
             api_v4.response.ApiVersion(
                 api_key=i16(api_key), min_version=i16(min_ver), max_version=i16(max_ver)
             )
-            for api_key, (min_ver, max_ver) in api_compatibility.items()
+            for api_key, (min_ver, max_ver) in advertised_api_compatibility.items()
         )
 
         response = api_v4.response.ApiVersionsResponse(
@@ -2561,7 +2576,33 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[SyncGroupResponse], Awaitable[None]],
     ):
-        pass
+        log.info(
+            "handling sync group request",
+            group_id=req.group_id,
+            member_id=req.member_id,
+            generation=int(req.generation_id),
+            api_version=api_version,
+        )
+        try:
+            resp = await do_sync_group(self.server.config, req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "sync group request failed",
+                group_id=req.group_id,
+                member_id=req.member_id,
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.sync_group_request_error_response(
+                ErrorCode.unknown_server_error,
+                "sync group handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def sync_group_request_error_response(
         self,
@@ -2570,7 +2611,19 @@ class Connection(KafkaHandler):
         req: SyncGroupRequest,
         api_version: int,
     ) -> SyncGroupResponse:
-        pass
+        mod = load_payload_module(14, api_version, EntityType.response)
+        fields = getattr(mod.SyncGroupResponse, "__dataclass_fields__", {})
+        kwargs = {
+            "error_code": error_code,
+            "assignment": b"",
+        }
+        if "throttle_time" in fields:
+            kwargs["throttle_time"] = zero_throttle()
+        if "protocol_type" in fields:
+            kwargs["protocol_type"] = None
+        if "protocol_name" in fields:
+            kwargs["protocol_name"] = None
+        return mod.SyncGroupResponse(**kwargs)
 
     async def handle_txn_offset_commit_request(
         self,

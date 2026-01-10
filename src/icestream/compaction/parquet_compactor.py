@@ -7,7 +7,7 @@ from typing import List
 
 import pyarrow.parquet as pq
 
-from icestream.compaction import build_uri
+from icestream.utils import normalize_object_key
 from icestream.compaction.types import CompactionContext, CompactionProcessor
 from icestream.compaction.schema import PARQUET_RECORD_SCHEMA
 from icestream.models import (
@@ -60,7 +60,8 @@ class ParquetCompactor(CompactionProcessor):
 
         for parent in parents:
             # read parent file as a stream
-            get_result = await ctx.config.store.get_async(parent.uri)
+            object_key = normalize_object_key(ctx.config, parent.uri)
+            get_result = await ctx.config.store.get_async(object_key)
             blob = await get_result.bytes_async()
             pf = pq.ParquetFile(io.BytesIO(bytes(blob)))
 
@@ -140,7 +141,7 @@ class ParquetCompactor(CompactionProcessor):
         )
         # put_async expects IO[bytes]
         await ctx.config.store.put_async(key, io.BytesIO(data))
-        uri = build_uri(ctx.config, key)
+        uri = normalize_object_key(ctx.config, key)
 
         await assert_no_overlap(
             session, topic, partition, state.out_min_off, state.last_off

@@ -129,7 +129,7 @@ from icestream.config import Config
 from icestream.kafkaserver.protocol import decode_kafka_records
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import ParquetFile, WALFile, WALFileOffset, Partition
-from icestream.utils import wal_uri_to_object_key
+from icestream.utils import normalize_object_key
 
 ListOffsetsRequestHeader = (
         ListOffsetsRequestHeaderV0
@@ -212,7 +212,7 @@ async def _find_offset_for_timestamp_parquet(
             return None  # skip everything older than target
         # if min_ts >= ts we still need to read to get the first offset >= floor_offset
         # (we can't assume the very first row meets floor_offset).
-    obj = await config.store.get_async(wal_uri_to_object_key(config, pf.uri))
+    obj = await config.store.get_async(normalize_object_key(config, pf.uri))
     blob = await obj.bytes_async()
     pfq = pq.ParquetFile(io.BytesIO(bytes(blob)))
 
@@ -240,7 +240,7 @@ async def _find_offset_for_timestamp_parquet(
 async def _find_offset_for_timestamp_wal(
         config: Config, wf: WALFile, ts: int, floor_offset: int
 ) -> Optional[Tuple[int, int]]:
-    obj = await config.store.get_async(wal_uri_to_object_key(config, wf.uri))
+    obj = await config.store.get_async(normalize_object_key(config, wf.uri))
     data = await obj.bytes_async()
     decoded = decode_kafka_wal_file(bytes(data))
 

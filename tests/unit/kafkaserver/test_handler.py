@@ -1,7 +1,8 @@
 import datetime
+import inspect
 import io
 import struct
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 from kio.index import load_payload_module, load_response_schema
@@ -17,6 +18,7 @@ from icestream.kafkaserver.handler import (
     PRODUCE_API_KEY,
     METADATA_API_KEY,
 )
+import icestream.kafkaserver.handler as handler_module
 
 
 def make_buf_for_version(version: int, trailing: bytes = b"X") -> bytes:
@@ -120,3 +122,30 @@ async def test_exception_in_handler_is_swallowed_with_produce(stream_writer, han
         await handle_kafka_request(PRODUCE_API_KEY, buf, handler, stream_writer)
 
     stream_writer.assert_not_awaited()
+
+
+def _iter_forwarding_handlers():
+    for name, fn in inspect.getmembers(handler_module, inspect.iscoroutinefunction):
+        if not name.startswith("handle_"):
+            continue
+        if name == "handle_kafka_request":
+            continue
+        if len(inspect.signature(fn).parameters) != 5:
+            continue
+        yield name, fn
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name, fn", list(_iter_forwarding_handlers()))
+async def test_handler_wrappers_forward_calls(name, fn):
+    handler = MagicMock()
+    method_name = f"{name}_request"
+    method = AsyncMock()
+    setattr(handler, method_name, method)
+    header = object()
+    request = object()
+    respond = AsyncMock()
+
+    await fn(handler, header, request, 7, respond)
+
+    method.assert_awaited_once_with(header, request, 7, respond)

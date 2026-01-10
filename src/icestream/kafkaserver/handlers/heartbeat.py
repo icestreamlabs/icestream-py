@@ -48,6 +48,17 @@ from kio.schema.heartbeat.v4.response import (
 from kio.schema.heartbeat.v4.response import (
     ResponseHeader as HeartbeatResponseHeaderV4,
 )
+from kio.schema.errors import ErrorCode
+from sqlalchemy import select
+
+from icestream.config import Config
+from icestream.kafkaserver.consumer_group_liveness import (
+    expire_dead_members,
+    reset_after_sync_timeout,
+    utc_now,
+)
+from icestream.models.consumer_groups import ConsumerGroup, GroupMember
+from icestream.utils import zero_throttle
 
 HeartbeatRequestHeader = (
     HeartbeatRequestHeaderV0
@@ -80,3 +91,77 @@ HeartbeatResponse = (
     | HeartbeatResponseV3
     | HeartbeatResponseV4
 )
+
+
+def _build_heartbeat_response(error_code: ErrorCode, api_version: int) -> HeartbeatResponse:
+    if api_version >= 4:
+        return HeartbeatResponseV4(
+            throttle_time=zero_throttle(),
+            error_code=error_code,
+        )
+    if api_version == 3:
+        return HeartbeatResponseV3(
+            throttle_time=zero_throttle(),
+            error_code=error_code,
+        )
+    if api_version == 2:
+        return HeartbeatResponseV2(
+            throttle_time=zero_throttle(),
+            error_code=error_code,
+        )
+    if api_version == 1:
+        return HeartbeatResponseV1(
+            throttle_time=zero_throttle(),
+            error_code=error_code,
+        )
+    return HeartbeatResponseV0(error_code=error_code)
+
+
+async def do_heartbeat(
+    config: Config,
+    req: HeartbeatRequest,
+    api_version: int,
+) -> HeartbeatResponse:
+    assert config.async_session_factory is not None
+    now = utc_now()
+
+    async with config.async_session_factory() as session:
+        async with session.begin():
+            group = (
+                await session.execute(
+                    select(ConsumerGroup)
+                    .where(ConsumerGroup.group_id == req.group_id)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+
+            if group is None:
+                return _build_heartbeat_response(ErrorCode.unknown_member_id, api_version)
+
+            if await reset_after_sync_timeout(session, group, now):
+                return _build_heartbeat_response(ErrorCode.rebalance_in_progress, api_version)
+
+            members, _ = await expire_dead_members(session, group, now)
+            member = next((m for m in members if m.member_id == req.member_id), None)
+            if member is None:
+                return _build_heartbeat_response(ErrorCode.unknown_member_id, api_version)
+
+            req_generation = int(req.generation_id)
+            if req_generation != group.generation:
+                return _build_heartbeat_response(ErrorCode.illegal_generation, api_version)
+
+            if member.member_generation != group.generation:
+                return _build_heartbeat_response(ErrorCode.illegal_generation, api_version)
+
+            if group.state != "Stable":
+                return _build_heartbeat_response(ErrorCode.rebalance_in_progress, api_version)
+
+            req_instance_id = getattr(req, "group_instance_id", None)
+            if member.group_instance_id:
+                if req_instance_id is None or req_instance_id != member.group_instance_id:
+                    return _build_heartbeat_response(ErrorCode.fenced_instance_id, api_version)
+            elif req_instance_id:
+                member.group_instance_id = req_instance_id
+
+            member.last_heartbeat_at = now
+            return _build_heartbeat_response(ErrorCode.none, api_version)

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, UTC
 import io
 from unittest.mock import AsyncMock, patch
+from contextlib import nullcontext
 
 import pyarrow.parquet as pq
 import pytest
@@ -8,7 +9,6 @@ from obstore.store import MemoryStore
 
 from icestream.compaction.types import CompactionContext
 from icestream.compaction.wal_to_parquet import WalToParquetProcessor
-from icestream.compaction import build_uri
 from icestream.kafkaserver.wal import WALFile as DecodedWALFile, WALBatch
 from icestream.kafkaserver.protocol import (
     KafkaRecordBatch,
@@ -31,11 +31,12 @@ def capture_parquet_rows(session):
 
 
 def patch_decode_and_build(records):
-    return patch(
-        "icestream.compaction.wal_to_parquet.decode_kafka_records", return_value=records
-    ), patch(
-        "icestream.compaction.wal_to_parquet.build_uri",
-        side_effect=lambda arg, key: build_uri(getattr(arg, "config", arg), key),
+    return (
+        patch(
+            "icestream.compaction.wal_to_parquet.decode_kafka_records",
+            return_value=records,
+        ),
+        nullcontext(),
     )
 
 

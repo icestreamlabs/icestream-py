@@ -33,7 +33,7 @@ def upgrade() -> None:
     sa.Column('max_timestamp', sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('generation', sa.Integer(), nullable=False),
     sa.Column('compacted_at', sa.TIMESTAMP(timezone=True), nullable=True),
-    sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), sa.Identity(always=True), nullable=False),
+    sa.Column('id', sa.BigInteger(), sa.Identity(always=True), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['topic_name', 'partition_number'], ['partitions.topic_name', 'partitions.partition_number'], ondelete='CASCADE'),
@@ -45,9 +45,9 @@ def upgrade() -> None:
     op.create_index('ix_pf_topic_partition_max', 'parquet_files', ['topic_name', 'partition_number', 'max_offset'], unique=False)
     op.create_index('ix_pf_topic_partition_min', 'parquet_files', ['topic_name', 'partition_number', 'min_offset'], unique=False)
     op.create_table('parquet_file_parents',
-    sa.Column('child_parquet_file_id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), nullable=False),
-    sa.Column('parent_parquet_file_id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), nullable=False),
-    sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), sa.Identity(always=True), nullable=False),
+    sa.Column('child_parquet_file_id', sa.BigInteger(), nullable=False),
+    sa.Column('parent_parquet_file_id', sa.BigInteger(), nullable=False),
+    sa.Column('id', sa.BigInteger(), sa.Identity(always=True), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['child_parquet_file_id'], ['parquet_files.id'], ondelete='CASCADE'),
@@ -58,9 +58,9 @@ def upgrade() -> None:
     op.create_index('ix_pfp_child', 'parquet_file_parents', ['child_parquet_file_id'], unique=False)
     op.create_index('ix_pfp_parent', 'parquet_file_parents', ['parent_parquet_file_id'], unique=False)
     op.create_table('parquet_file_sources',
-    sa.Column('parquet_file_id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), nullable=False),
-    sa.Column('wal_file_id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), nullable=False),
-    sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), sa.Identity(always=True), nullable=False),
+    sa.Column('parquet_file_id', sa.BigInteger(), nullable=False),
+    sa.Column('wal_file_id', sa.BigInteger(), nullable=False),
+    sa.Column('id', sa.BigInteger(), sa.Identity(always=True), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['parquet_file_id'], ['parquet_files.id'], ondelete='CASCADE'),

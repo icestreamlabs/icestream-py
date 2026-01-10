@@ -169,18 +169,6 @@ async def test_empty_timeout_advances_timer_without_flush(
     assert manager.last_flush_time >= t0  # advanced
 
 
-def test_build_wal_uri_variants(base_config):
-    # no prefix
-    q = asyncio.Queue()
-    m = WALManager(config=base_config, queue=q)
-    base_config.WAL_BUCKET = "bkt"
-    base_config.WAL_BUCKET_PREFIX = ""
-    assert m._build_wal_uri("k") == "bkt/k"
-    # with prefix
-    base_config.WAL_BUCKET_PREFIX = "pre"
-    assert m._build_wal_uri("k") == "bkt/pre/k"
-
-
 @pytest.mark.asyncio
 async def test_empty_timeout_advances_timer(base_config, fake_clock: FakeClock):
     config = base_config
@@ -488,16 +476,15 @@ async def test_put_error_sets_exception(base_config, fake_clock: FakeClock):
             it.flush_result.result()
 
 
-def test_build_uri_none_vs_empty_prefix(base_config):
+def test_normalize_object_key_strips_legacy_prefixes(base_config):
+    from icestream.utils import normalize_object_key
+
     base_config.WAL_BUCKET = "b"
-    q = asyncio.Queue()
-    m = WALManager(config=base_config, queue=q)
+    base_config.WAL_BUCKET_PREFIX = "pfx"
 
-    base_config.WAL_BUCKET_PREFIX = None
-    assert m._build_wal_uri("k") == "b/k"
-
-    base_config.WAL_BUCKET_PREFIX = ""
-    assert m._build_wal_uri("k") == "b/k"
+    assert normalize_object_key(base_config, "b/pfx/wal/abc") == "wal/abc"
+    assert normalize_object_key(base_config, "/pfx/wal/abc") == "wal/abc"
+    assert normalize_object_key(base_config, "wal/abc") == "wal/abc"
 
 
 def test_default_size_estimator():

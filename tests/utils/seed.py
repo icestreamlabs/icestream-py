@@ -8,7 +8,7 @@ import pyarrow.parquet as pq
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from icestream.compaction import build_uri
+from icestream.utils import normalize_object_key
 from icestream.compaction.schema import PARQUET_RECORD_SCHEMA
 from icestream.config import Config
 from icestream.kafkaserver.protocol import KafkaRecord, KafkaRecordBatch
@@ -59,7 +59,7 @@ async def create_parquet_range(
     key = f"{key_prefix}/topics/{topic}/partition={partition}/{min_off}-{max_off}-gen0.parquet"
 
     await config.store.put_async(key, io.BytesIO(data))
-    uri = build_uri(config, key)
+    uri = normalize_object_key(config, key)
 
     min_ts = None if ts_start_ms is None else datetime.datetime.fromtimestamp(ts_start_ms / 1000, tz=datetime.UTC)
     max_ts = None if ts_start_ms is None else datetime.datetime.fromtimestamp(
@@ -125,7 +125,7 @@ async def create_wal_range(
 
     key = f"{key_prefix}/topics/{topic}/partition={partition}/{base_offset}-{last_offset}.wal"
     await config.store.put_async(key, io.BytesIO(wal_bytes))
-    uri = build_uri(config, key)
+    uri = normalize_object_key(config, key)
 
     wal = WALFile(
         uri=uri,

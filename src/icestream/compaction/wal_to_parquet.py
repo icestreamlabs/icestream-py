@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from icestream.compaction import build_uri
+from icestream.utils import normalize_object_key
 from icestream.compaction.types import CompactionContext, CompactionProcessor
 from icestream.compaction.schema import PARQUET_RECORD_SCHEMA
 from icestream.kafkaserver.protocol import decode_kafka_records
@@ -144,7 +144,7 @@ class WalToParquetProcessor(CompactionProcessor):
             pf = ParquetFile(
                 topic_name=topic,
                 partition_number=partition,
-                uri=build_uri(ctx.config, key),
+                uri=normalize_object_key(ctx.config, key),
                 total_bytes=total_bytes,
                 row_count=table.num_rows,
                 min_offset=min_off,

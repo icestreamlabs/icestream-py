@@ -14,7 +14,7 @@ from icestream.kafkaserver.wal import WALFile as DecodedWALFile, WALBatch
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import WALFile as WALFileModel, Topic, ParquetFile
 from icestream.logger import log
-from icestream.utils import wal_uri_to_object_key
+from icestream.utils import normalize_object_key
 
 
 class CompactorWorker:
@@ -128,7 +128,7 @@ class CompactorWorker:
     ) -> list[DecodedWALFile]:
         decoded: list[DecodedWALFile] = []
         for wal in wal_models:
-            object_key = self._wal_uri_to_object_key(wal.uri)
+            object_key = normalize_object_key(self.config, wal.uri)
             get_result = await self.config.store.get_async(object_key)
             data = await get_result.bytes_async()
             decoded_file = decode_kafka_wal_file(bytes(data))
@@ -210,10 +210,6 @@ class CompactorWorker:
         ):
             out[key] = files[:max_files]
 
-    def _wal_uri_to_object_key(self, uri: str) -> str:
-        return wal_uri_to_object_key(self.config, uri)
-
-
 # currently only support Avro for schema
 # in theory can support plain json with some caveats
 # also non schema data, ie pure key/value straight from kafka records as key and value columns
@@ -231,10 +227,4 @@ class IcebergCompactor(CompactionProcessor):
                         log.info(f"no schema for topic {topic.name}")
                         continue
 
-
-def build_uri(config, key: str) -> str:
-    bucket_prefix = (
-        f"/{config.WAL_BUCKET_PREFIX.strip('/')}" if config.WAL_BUCKET_PREFIX else ""
-    )
-    return f"{bucket_prefix}/{key}"
 

@@ -596,6 +596,30 @@ api_compatibility: dict[int, tuple[int, int]] = {
     WRITE_SHARE_GROUP_STATE_API_KEY: (0, 0),
 }
 
+UNIMPLEMENTED_GROUP_API_KEYS = frozenset(
+    {
+        FIND_COORDINATOR_API_KEY,
+        JOIN_GROUP_API_KEY,
+        HEARTBEAT_API_KEY,
+        LEAVE_GROUP_API_KEY,
+        LIST_GROUPS_API_KEY,
+        DESCRIBE_GROUPS_API_KEY,
+        DELETE_GROUPS_API_KEY,
+        OFFSET_COMMIT_API_KEY,
+        OFFSET_FETCH_API_KEY,
+        OFFSET_DELETE_API_KEY,
+        TXN_OFFSET_COMMIT_API_KEY,
+        CONSUMER_GROUP_DESCRIBE_API_KEY,
+        CONSUMER_GROUP_HEARTBEAT_API_KEY,
+    }
+)
+
+advertised_api_compatibility: dict[int, tuple[int, int]] = {
+    api_key: versions
+    for api_key, versions in api_compatibility.items()
+    if api_key not in UNIMPLEMENTED_GROUP_API_KEYS
+}
+
 
 async def handle_write_share_group_state(
     handler: KafkaHandler,

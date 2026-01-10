@@ -14,7 +14,6 @@ from obstore.store import (
 from pyiceberg.catalog import load_catalog
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
 
 from icestream.errors import IcebergConfigurationError
 
@@ -33,10 +32,27 @@ class Config:
 
         # db
         self.DATABASE_URL = os.getenv(
-            "ICESTREAM_DATABASE_URL", "sqlite+aiosqlite:///:memory:"
+            "ICESTREAM_DATABASE_URL", "postgresql+asyncpg://localhost/icestream"
         )
         self.async_session_factory: async_sessionmaker[AsyncSession] | None = None
         self.engine = None
+
+        # consumer groups
+        self.GROUP_MIN_SESSION_TIMEOUT_MS = int(
+            os.getenv("ICESTREAM_GROUP_MIN_SESSION_TIMEOUT_MS", "6000")
+        )
+        self.GROUP_MAX_SESSION_TIMEOUT_MS = int(
+            os.getenv("ICESTREAM_GROUP_MAX_SESSION_TIMEOUT_MS", "300000")
+        )
+        self.GROUP_MAX_REBALANCE_TIMEOUT_MS = int(
+            os.getenv("ICESTREAM_GROUP_MAX_REBALANCE_TIMEOUT_MS", "300000")
+        )
+        self.GROUP_INITIAL_REBALANCE_DELAY_MS = int(
+            os.getenv("ICESTREAM_GROUP_INITIAL_REBALANCE_DELAY_MS", "3000")
+        )
+        self.GROUP_REAPER_INTERVAL_MS = int(
+            os.getenv("ICESTREAM_GROUP_REAPER_INTERVAL_MS", "1000")
+        )
 
         # obj store
         self.OBJECT_STORE_PROVIDER = os.getenv(
@@ -137,12 +153,7 @@ class Config:
             "future": True,
         }
 
-        if url.drivername.startswith("sqlite"):
-            # Assign separately to keep type checkers happy
-            engine_options["connect_args"] = {"check_same_thread": False}
-            engine_options["poolclass"] = StaticPool
-
-        elif url.drivername.startswith("postgresql"):
+        if url.drivername.startswith("postgresql"):
             if not url.drivername.startswith("postgresql+asyncpg"):
                 url = url.set(drivername="postgresql+asyncpg")
         else:

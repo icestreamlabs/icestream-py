@@ -168,7 +168,7 @@ import pyarrow.parquet as pq
 from icestream.kafkaserver.protocol import decode_kafka_records, KafkaRecord, KafkaRecordBatch, KafkaRecordHeader
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import Partition, WALFileOffset, WALFile, ParquetFile
-from icestream.utils import wal_uri_to_object_key
+from icestream.utils import normalize_object_key
 
 FetchRequestHeader = (
         FetchRequestHeaderV0
@@ -345,7 +345,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                     if remaining_bytes <= 0:
                         break
 
-                    obj = await config.store.get_async(wal_uri_to_object_key(config, wf.uri))
+                    obj = await config.store.get_async(normalize_object_key(config, wf.uri))
                     data = await obj.bytes_async()
                     decoded = decode_kafka_wal_file(bytes(data))
 
@@ -437,7 +437,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                         if remaining_bytes <= 0:
                             break
 
-                        obj = await config.store.get_async(wal_uri_to_object_key(config, pf.uri))
+                        obj = await config.store.get_async(normalize_object_key(config, pf.uri))
                         blob = await obj.bytes_async()
                         pfq = pq.ParquetFile(io.BytesIO(bytes(blob)))
 
