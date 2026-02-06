@@ -12,6 +12,7 @@ from icestream.compaction.wal_to_parquet import WalToParquetProcessor
 from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
+from icestream.kafkaserver.internal_topics import ensure_internal_topics
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.wal.manager import WALManager
 from icestream.kafkaserver.consumer_group_liveness import run_consumer_group_reaper
@@ -41,6 +42,9 @@ async def run():
         log.info("Running DB migrations...")
         await run_migrations(config)
         log.info("Migrations complete.")
+
+        log.info("Ensuring internal topics...")
+        await ensure_internal_topics(config)
 
         queue = asyncio.Queue[ProduceTopicPartitionData](maxsize=2000)
         wal_manager = WALManager(config, queue)

@@ -53,6 +53,9 @@ class Config:
         self.GROUP_REAPER_INTERVAL_MS = int(
             os.getenv("ICESTREAM_GROUP_REAPER_INTERVAL_MS", "1000")
         )
+        self.OFFSETS_TOPIC_PARTITIONS = int(
+            os.getenv("ICESTREAM_OFFSETS_TOPIC_PARTITIONS", "50")
+        )
 
         # obj store
         self.OBJECT_STORE_PROVIDER = os.getenv(

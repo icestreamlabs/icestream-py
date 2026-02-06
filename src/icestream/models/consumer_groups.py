@@ -182,3 +182,17 @@ class GroupOffset(Base, BigIntIdMixin, TimestampMixin):
         UniqueConstraint("consumer_group_id", "topic_name", "partition_number"),
         Index("ix_group_offsets_gid_tp", "consumer_group_id", "topic_name", "partition_number"),
     )
+
+
+class GroupOffsetLog(Base):
+    __tablename__ = "group_offset_log"
+
+    topic_partition: Mapped[int] = mapped_column(Integer, primary_key=True)
+    log_offset: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    key_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    value_bytes: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    commit_ts: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )

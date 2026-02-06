@@ -126,9 +126,12 @@ from kio.schema.list_offsets.v9.response import (
 from kio.static.primitive import i32, i64, i32Timedelta
 
 from icestream.config import Config
+from icestream.kafkaserver.internal_topics import internal_topics
+from icestream.kafkaserver.topic_backends import topic_backend_for_name
 from icestream.kafkaserver.protocol import decode_kafka_records
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import ParquetFile, WALFile, WALFileOffset, Partition
+from icestream.models.consumer_groups import GroupOffsetLog
 from icestream.utils import normalize_object_key
 
 ListOffsetsRequestHeader = (
@@ -183,7 +186,7 @@ ListOffsetsResponse = (
         | ListOffsetsResponseV9
 )
 
-from sqlalchemy import select, asc, Result, Row
+from sqlalchemy import select, asc, Result, Row, func
 
 import kio.schema.list_offsets.v0 as lo_v0
 import kio.schema.list_offsets.v1 as lo_v1
@@ -373,10 +376,93 @@ async def do_list_offsets(config: Config, req: ListOffsetsRequest, api_version: 
     topic_responses: list[lo_v9.response.ListOffsetsTopicResponse] = []
     print(req)
 
+    internal_specs = {spec.name: spec for spec in internal_topics(config)}
+
     async with config.async_session_factory() as session:
         for t in req.topics:
             topic_name = t.name
             part_responses: list[lo_v9.response.ListOffsetsPartitionResponse] = []
+
+            backend = topic_backend_for_name(topic_name)
+            if backend.is_internal:
+                spec = internal_specs.get(topic_name)
+                if spec is None:
+                    for pr in t.partitions:
+                        partition = int(pr.partition_index)
+                        part_responses.append(
+                            lo_v9.response.ListOffsetsPartitionResponse(
+                                partition_index=i32(partition),
+                                error_code=ErrorCode.unknown_topic_or_partition,
+                                timestamp=i64(-1),
+                                offset=i64(-1),
+                            )
+                        )
+                    topic_responses.append(
+                        lo_v9.response.ListOffsetsTopicResponse(
+                            name=topic_name,
+                            partitions=tuple(part_responses),
+                        )
+                    )
+                    continue
+
+            spec = internal_specs.get(topic_name)
+            if backend.is_internal:
+                for pr in t.partitions:
+                    partition = int(pr.partition_index)
+                    ts = int(pr.timestamp)
+                    if partition < 0 or partition >= spec.partitions:
+                        part_responses.append(
+                            lo_v9.response.ListOffsetsPartitionResponse(
+                                partition_index=i32(partition),
+                                error_code=ErrorCode.unknown_topic_or_partition,
+                                timestamp=i64(-1),
+                                offset=i64(-1),
+                            )
+                        )
+                        continue
+
+                    bounds = (
+                        await session.execute(
+                            select(
+                                func.min(GroupOffsetLog.log_offset),
+                                func.max(GroupOffsetLog.log_offset),
+                            ).where(GroupOffsetLog.topic_partition == partition)
+                        )
+                    ).one()
+                    min_offset, max_offset = bounds[0], bounds[1]
+                    if max_offset is None:
+                        log_start = 0
+                        log_end = 0
+                    else:
+                        log_start = int(min_offset) if min_offset is not None else 0
+                        log_end = int(max_offset) + 1
+
+                    if ts == LATEST:
+                        offset = log_end
+                        ret_ts = ts
+                    elif ts == EARLIEST:
+                        offset = log_start
+                        ret_ts = ts
+                    else:
+                        offset = log_end
+                        ret_ts = ts
+
+                    part_responses.append(
+                        lo_v9.response.ListOffsetsPartitionResponse(
+                            partition_index=i32(partition),
+                            error_code=ErrorCode.none,
+                            timestamp=i64(ret_ts),
+                            offset=i64(offset),
+                        )
+                    )
+
+                topic_responses.append(
+                    lo_v9.response.ListOffsetsTopicResponse(
+                        name=topic_name,
+                        partitions=tuple(part_responses),
+                    )
+                )
+                continue
 
             for pr in t.partitions:
                 partition = int(pr.partition_index)

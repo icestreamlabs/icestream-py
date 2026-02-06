@@ -150,6 +150,8 @@ from kio.schema.types import BrokerId
 from kio.static.primitive import i32, i64, Records, i32Timedelta
 
 from icestream.config import Config
+from icestream.kafkaserver.internal_topics import internal_topics
+from icestream.kafkaserver.topic_backends import topic_backend_for_name
 import kio.schema.fetch.v0 as fetch_v0
 import kio.schema.fetch.v1 as fetch_v1
 import kio.schema.fetch.v2 as fetch_v2
@@ -162,12 +164,13 @@ import kio.schema.fetch.v8 as fetch_v8
 import kio.schema.fetch.v9 as fetch_v9
 import kio.schema.fetch.v10 as fetch_v10
 import kio.schema.fetch.v11 as fetch_v11
-from sqlalchemy import select, update, asc
+from sqlalchemy import asc, func, literal_column, select, update
 import pyarrow.parquet as pq
 
 from icestream.kafkaserver.protocol import decode_kafka_records, KafkaRecord, KafkaRecordBatch, KafkaRecordHeader
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
 from icestream.models import Partition, WALFileOffset, WALFile, ParquetFile
+from icestream.models.consumer_groups import GroupOffsetLog
 from icestream.utils import normalize_object_key
 
 FetchRequestHeader = (
@@ -231,17 +234,207 @@ FetchResponse = (
 )
 
 
+INTERNAL_FETCH_ROW_LIMIT = 1000
+
+
+async def _internal_offsets_bounds(session, partition: int) -> tuple[int, int]:
+    bounds = (
+        await session.execute(
+            select(
+                func.min(GroupOffsetLog.log_offset),
+                func.max(GroupOffsetLog.log_offset),
+            ).where(GroupOffsetLog.topic_partition == partition)
+        )
+    ).one()
+    min_offset, max_offset = bounds[0], bounds[1]
+    if max_offset is None:
+        return 0, -1
+    return int(min_offset) if min_offset is not None else 0, int(max_offset)
+
+
+async def _internal_offsets_records(
+    session,
+    *,
+    partition: int,
+    start: int,
+    max_bytes: int,
+) -> bytes:
+    rows = (
+        await session.execute(
+            select(
+                GroupOffsetLog.log_offset,
+                GroupOffsetLog.key_bytes,
+                GroupOffsetLog.value_bytes,
+            )
+            .where(
+                GroupOffsetLog.topic_partition == partition,
+                GroupOffsetLog.log_offset >= start,
+            )
+            .order_by(GroupOffsetLog.log_offset)
+            .limit(INTERNAL_FETCH_ROW_LIMIT)
+        )
+    ).all()
+
+    if not rows or max_bytes <= 0:
+        return b""
+
+    records: list[KafkaRecord] = []
+    records_blob = b""
+    base_offset = None
+
+    for log_offset, key_bytes, value_bytes in rows:
+        if base_offset is None:
+            base_offset = int(log_offset)
+
+        records.append(
+            KafkaRecord(
+                attributes=0,
+                timestamp_delta=0,
+                offset_delta=int(log_offset) - base_offset,
+                key=key_bytes,
+                value=value_bytes,
+                headers=[],
+            )
+        )
+        batch = KafkaRecordBatch.from_records(offset=base_offset, records=records)
+        raw = batch.to_bytes()
+
+        if len(raw) > max_bytes and records_blob:
+            records.pop()
+            break
+
+        records_blob = raw
+        if len(records_blob) > max_bytes and len(records) == 1:
+            break
+
+    return records_blob
+
+
 async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> FetchResponse:
     topic_responses: list[fetch_v11.response.FetchableTopicResponse] = []
+
+    internal_specs = {spec.name: spec for spec in internal_topics(config)}
 
     async with config.async_session_factory() as session:
         for t in req.topics:
             topic_name = t.topic
             partition_responses: list[fetch_v11.response.PartitionData] = []
 
+            backend = topic_backend_for_name(topic_name)
+            if backend.is_internal:
+                spec = internal_specs.get(topic_name)
+                if spec is None:
+                    for pr in t.partitions:
+                        partition = int(pr.partition)
+                        partition_responses.append(
+                            fetch_v11.response.PartitionData(
+                                partition_index=i32(partition),
+                                error_code=ErrorCode.unknown_topic_or_partition,
+                                high_watermark=i64(-1),
+                                last_stable_offset=i64(-1),
+                                log_start_offset=i64(-1),
+                                records=Records(b""),
+                                aborted_transactions=(),
+                                preferred_read_replica=BrokerId(-1),
+                            )
+                        )
+                    continue
+
             for pr in t.partitions:
                 partition = int(pr.partition)
                 start = int(pr.fetch_offset)  # absolute offset (ListOffsets resolves sentinels)
+
+                spec = internal_specs.get(topic_name)
+                if backend.is_internal:
+                    if partition < 0 or partition >= spec.partitions:
+                        partition_responses.append(
+                            fetch_v11.response.PartitionData(
+                                partition_index=i32(partition),
+                                error_code=ErrorCode.unknown_topic_or_partition,
+                                high_watermark=i64(-1),
+                                last_stable_offset=i64(-1),
+                                log_start_offset=i64(-1),
+                                records=Records(b""),
+                                aborted_transactions=(),
+                                preferred_read_replica=BrokerId(-1)
+                            )
+                        )
+                        continue
+
+                    log_start, last_offset = await _internal_offsets_bounds(session, partition)
+                    if last_offset < 0:
+                        high_watermark = -1
+                        log_end_offset = 0
+                    else:
+                        high_watermark = last_offset
+                        log_end_offset = last_offset + 1
+
+                    max_bytes = int(pr.partition_max_bytes)
+                    if max_bytes <= 0:
+                        partition_responses.append(
+                            fetch_v11.response.PartitionData(
+                                partition_index=i32(partition),
+                                error_code=ErrorCode.invalid_request,
+                                high_watermark=i64(high_watermark),
+                                last_stable_offset=i64(high_watermark),
+                                log_start_offset=i64(log_start),
+                                records=Records(b""),
+                                aborted_transactions=(),
+                                preferred_read_replica=BrokerId(-1),
+                            )
+                        )
+                        continue
+
+                    if start < log_start or start > log_end_offset:
+                        partition_responses.append(
+                            fetch_v11.response.PartitionData(
+                                partition_index=i32(partition),
+                                error_code=ErrorCode.offset_out_of_range,
+                                high_watermark=i64(high_watermark),
+                                last_stable_offset=i64(high_watermark),
+                                log_start_offset=i64(log_start),
+                                records=Records(b""),
+                                aborted_transactions=(),
+                                preferred_read_replica=BrokerId(-1)
+                            )
+                        )
+                        continue
+
+                    if start == log_end_offset:
+                        partition_responses.append(
+                            fetch_v11.response.PartitionData(
+                                partition_index=i32(partition),
+                                error_code=ErrorCode.none,
+                                high_watermark=i64(high_watermark),
+                                log_start_offset=i64(log_start),
+                                records=Records(b""),
+                                aborted_transactions=(),
+                                last_stable_offset=i64(high_watermark),
+                                preferred_read_replica=BrokerId(-1)
+                            )
+                        )
+                        continue
+
+                    records_blob = await _internal_offsets_records(
+                        session,
+                        partition=partition,
+                        start=start,
+                        max_bytes=max_bytes,
+                    )
+
+                    partition_responses.append(
+                        fetch_v11.response.PartitionData(
+                            partition_index=i32(partition),
+                            error_code=ErrorCode.none,
+                            high_watermark=i64(high_watermark),
+                            log_start_offset=i64(log_start),
+                            records=Records(records_blob),
+                            aborted_transactions=(),
+                            last_stable_offset=i64(high_watermark),
+                            preferred_read_replica=BrokerId(-1)
+                        )
+                    )
+                    continue
 
                 # load partition metadata
                 row = (

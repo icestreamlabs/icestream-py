@@ -12,11 +12,13 @@ from icestream.models import Partition, Topic
 class TopicCreate(BaseModel):
     name: str
     num_partitions: int = 3
+    is_internal: bool = False
 
 
 class TopicResponse(BaseModel):
     id: int
     name: str
+    is_internal: bool
 
 
 class AdminApi:
@@ -42,7 +44,7 @@ class AdminApi:
             if result.scalar_one_or_none():
                 raise HTTPException(400, detail="Topic already exists")
 
-            new_topic = Topic(name=data.name)
+            new_topic = Topic(name=data.name, is_internal=data.is_internal)
             session.add(new_topic)
             await session.flush()
 
@@ -54,4 +56,4 @@ class AdminApi:
                 )
             await session.commit()
 
-            return TopicResponse(id=new_topic.id, name=new_topic.name)
+            return TopicResponse(id=new_topic.id, name=new_topic.name, is_internal=new_topic.is_internal)

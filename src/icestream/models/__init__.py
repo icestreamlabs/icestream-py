@@ -56,6 +56,12 @@ class Topic(Base, IntIdMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     schema: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_internal: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
 
     partitions: Mapped[list["Partition"]] = relationship(back_populates="topic")
 

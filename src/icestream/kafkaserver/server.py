@@ -74,7 +74,7 @@ from icestream.kafkaserver.handlers.add_partitions_to_txn import AddPartitionsTo
 from icestream.kafkaserver.handlers.alter_client_quotas import AlterClientQuotasRequest, AlterClientQuotasRequestHeader, \
     AlterClientQuotasResponse
 from icestream.kafkaserver.handlers.alter_configs import AlterConfigsRequest, AlterConfigsRequestHeader, \
-    AlterConfigsResponse
+    AlterConfigsResponse, do_alter_configs, alter_configs_error_response
 from icestream.kafkaserver.handlers.alter_partition import AlterPartitionRequest, AlterPartitionRequestHeader, \
     AlterPartitionResponse
 from icestream.kafkaserver.handlers.alter_partition_reassignments import AlterPartitionReassignmentsRequest, \
@@ -100,7 +100,7 @@ from icestream.kafkaserver.handlers.controlled_shutdown import ControlledShutdow
 from icestream.kafkaserver.handlers.controller_registration import ControllerRegistrationRequest, \
     ControllerRegistrationRequestHeader, ControllerRegistrationResponse
 from icestream.kafkaserver.handlers.delete_topics import DeleteTopicsRequest, DeleteTopicsRequestHeader, \
-    DeleteTopicsResponse
+    DeleteTopicsResponse, do_delete_topics, delete_topics_error_response
 from icestream.kafkaserver.handlers.delete_acls import DeleteAclsRequest, DeleteAclsRequestHeader, \
     DeleteAclsResponse
 from icestream.kafkaserver.handlers.delete_groups import DeleteGroupsRequest, DeleteGroupsRequestHeader, \
@@ -116,7 +116,7 @@ from icestream.kafkaserver.handlers.describe_client_quotas import DescribeClient
 from icestream.kafkaserver.handlers.describe_cluster import DescribeClusterRequest, DescribeClusterRequestHeader, \
     DescribeClusterResponse
 from icestream.kafkaserver.handlers.describe_configs import DescribeConfigsRequest, DescribeConfigsRequestHeader, \
-    DescribeConfigsResponse
+    DescribeConfigsResponse, do_describe_configs, describe_configs_error_response
 from icestream.kafkaserver.handlers.describe_delegation_token import DescribeDelegationTokenRequest, \
     DescribeDelegationTokenRequestHeader, DescribeDelegationTokenResponse
 from icestream.kafkaserver.handlers.describe_groups import DescribeGroupsRequest, DescribeGroupsRequestHeader, \
@@ -154,6 +154,8 @@ from icestream.kafkaserver.handlers.create_partitions import (
     CreatePartitionsRequest,
     CreatePartitionsRequestHeader,
     CreatePartitionsResponse,
+    do_create_partitions,
+    create_partitions_error_response,
 )
 from icestream.kafkaserver.handlers.find_coordinator import (
     FindCoordinatorRequest,
@@ -184,6 +186,8 @@ from icestream.kafkaserver.handlers.incremental_alter_configs import (
     IncrementalAlterConfigsRequest,
     IncrementalAlterConfigsRequestHeader,
     IncrementalAlterConfigsResponse,
+    do_incremental_alter_configs,
+    incremental_alter_configs_error_response,
 )
 from icestream.kafkaserver.handlers.init_producer_id import (
     InitProducerIdRequest,
@@ -226,6 +230,13 @@ from icestream.kafkaserver.handlers.list_offsets import (
     ListOffsetsRequestHeader,
     ListOffsetsResponse, do_list_offsets,
 )
+from icestream.kafkaserver.handlers.offset_response import (
+    build_group_response,
+    build_offset_response,
+    build_partition_response,
+    build_topic_response,
+    response_sequence_element,
+)
 from icestream.kafkaserver.handlers.list_partition_reassignments import (
     ListPartitionReassignmentsRequest,
     ListPartitionReassignmentsRequestHeader,
@@ -240,16 +251,19 @@ from icestream.kafkaserver.handlers.offset_commit import (
     OffsetCommitRequest,
     OffsetCommitRequestHeader,
     OffsetCommitResponse,
+    do_offset_commit,
 )
 from icestream.kafkaserver.handlers.offset_delete import (
     OffsetDeleteRequest,
     OffsetDeleteRequestHeader,
     OffsetDeleteResponse,
+    do_offset_delete,
 )
 from icestream.kafkaserver.handlers.offset_fetch import (
     OffsetFetchRequest,
     OffsetFetchRequestHeader,
     OffsetFetchResponse,
+    do_offset_fetch,
 )
 from icestream.kafkaserver.handlers.offset_for_leader_epoch import (
     OffsetForLeaderEpochRequest,
@@ -334,12 +348,41 @@ from icestream.kafkaserver.handlers.update_raft_voter import UpdateRaftVoterRequ
     UpdateRaftVoterResponse
 from icestream.kafkaserver.handlers.write_share_group_state import WriteShareGroupStateRequest, \
     WriteShareGroupStateRequestHeader, WriteShareGroupStateResponse
+from icestream.kafkaserver.topic_backends import topic_backend_for_name
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.models import Partition, Topic
 from icestream.utils import zero_throttle
 
 log = structlog.get_logger()
+
+
+def _offset_request_topics(req: object) -> tuple:
+    for name in ("topics", "topic_data"):
+        if hasattr(req, name):
+            return getattr(req, name) or ()
+    return ()
+
+
+def _offset_topic_name(topic: object) -> str:
+    for name in ("name", "topic", "topic_name"):
+        if hasattr(topic, name):
+            return str(getattr(topic, name))
+    return ""
+
+
+def _offset_topic_partitions(topic: object):
+    for name in ("partitions", "partition_data"):
+        if hasattr(topic, name):
+            return getattr(topic, name) or ()
+    return ()
+
+
+def _offset_partition_id(partition: object) -> int:
+    for name in ("partition_index", "partition", "partition_id", "partition_number"):
+        if hasattr(partition, name):
+            return int(getattr(partition, name))
+    return 0
 
 
 class Server:
@@ -407,6 +450,27 @@ class Connection(KafkaHandler):
         for topic in req.topic_data:
             topic_name = topic.name
             partition_responses: List[produce_v8.response.PartitionProduceResponse] = []
+
+            if topic_backend_for_name(topic_name).is_internal:
+                for partition in topic.partition_data:
+                    partition_responses.append(
+                        produce_v8.response.PartitionProduceResponse(
+                            index=i32(partition.index),
+                            error_code=ErrorCode.topic_authorization_failed,
+                            base_offset=i64(-1),
+                            log_append_time=None,
+                            log_start_offset=i64(-1),
+                            record_errors=(),
+                            error_message="cannot produce to internal topic",
+                        )
+                    )
+                topic_responses.append(
+                    produce_v8.response.TopicProduceResponse(
+                        name=topic_name,
+                        partition_responses=tuple(partition_responses),
+                    )
+                )
+                continue
 
             for partition in topic.partition_data:
                 partition_idx = partition.index
@@ -830,7 +894,7 @@ class Connection(KafkaHandler):
                 metadata_v6.response.MetadataResponseTopic(
                     error_code=ErrorCode.none,
                     name=TopicName(topic.name),
-                    is_internal=False,
+                    is_internal=topic.is_internal,
                     partitions=tuple(partition_metadata),
                 )
             )
@@ -1190,16 +1254,28 @@ class Connection(KafkaHandler):
                 "create_topic", topic=topic.name, num_partitions=topic.num_partitions
             )
 
-            result = create_topics_v7.response.CreatableTopicResult(
-                name=topic.name,
-                topic_id=uuid.uuid4(),
-                error_code=ErrorCode.none,
-                error_message=None,
-                topic_config_error_code=i16(0),
-                num_partitions=i32(topic.num_partitions),
-                replication_factor=i16(topic.replication_factor),
-                configs=None,  # configs not returned
-            )
+            if topic_backend_for_name(topic.name).is_internal:
+                result = create_topics_v7.response.CreatableTopicResult(
+                    name=topic.name,
+                    topic_id=None,
+                    error_code=ErrorCode.topic_authorization_failed,
+                    error_message="cannot create internal topic",
+                    topic_config_error_code=i16(0),
+                    num_partitions=i32(-1),
+                    replication_factor=i16(-1),
+                    configs=None,
+                )
+            else:
+                result = create_topics_v7.response.CreatableTopicResult(
+                    name=topic.name,
+                    topic_id=uuid.uuid4(),
+                    error_code=ErrorCode.none,
+                    error_message=None,
+                    topic_config_error_code=i16(0),
+                    num_partitions=i32(topic.num_partitions),
+                    replication_factor=i16(topic.replication_factor),
+                    configs=None,  # configs not returned
+                )
             results.append(result)
 
         response = CreateTopicsResponse(
@@ -1280,7 +1356,29 @@ class Connection(KafkaHandler):
             api_version: int,
             callback: Callable[[DeleteTopicsResponse], Awaitable[None]],
     ):
-        pass
+        log.info(
+            "handling delete topics request",
+            topics=[getattr(t, "name", None) or getattr(t, "topic", None) for t in getattr(req, "topics", ())],
+            api_version=api_version,
+        )
+        try:
+            resp = await do_delete_topics(self.server.config, req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "delete topics request failed",
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.delete_topics_request_error_response(
+                ErrorCode.unknown_server_error,
+                "delete topics handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def delete_topics_request_error_response(
             self,
@@ -1289,7 +1387,12 @@ class Connection(KafkaHandler):
             req: DeleteTopicsRequest,
             api_version: int,
     ) -> DeleteTopicsResponse:
-        pass
+        return delete_topics_error_response(
+            req,
+            api_version,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     async def handle_delete_acls_request(
             self,
@@ -1424,7 +1527,25 @@ class Connection(KafkaHandler):
             api_version: int,
             callback: Callable[[DescribeConfigsResponse], Awaitable[None]],
     ):
-        pass
+        log.info("handling describe configs request", api_version=api_version)
+        try:
+            resp = await do_describe_configs(req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "describe configs request failed",
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.describe_configs_request_error_response(
+                ErrorCode.unknown_server_error,
+                "describe configs handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def describe_configs_request_error_response(
             self,
@@ -1433,7 +1554,12 @@ class Connection(KafkaHandler):
             req: DescribeConfigsRequest,
             api_version: int,
     ) -> DescribeConfigsResponse:
-        pass
+        return describe_configs_error_response(
+            req,
+            api_version,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     async def handle_describe_delegation_token_request(
             self,
@@ -1712,7 +1838,25 @@ class Connection(KafkaHandler):
             api_version: int,
             callback: Callable[[AlterConfigsResponse], Awaitable[None]],
     ):
-        pass
+        log.info("handling alter configs request", api_version=api_version)
+        try:
+            resp = await do_alter_configs(req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "alter configs request failed",
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.alter_configs_request_error_response(
+                ErrorCode.unknown_server_error,
+                "alter configs handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def alter_configs_request_error_response(
             self,
@@ -1721,7 +1865,12 @@ class Connection(KafkaHandler):
             req: AlterConfigsRequest,
             api_version: int,
     ) -> AlterConfigsResponse:
-        pass
+        return alter_configs_error_response(
+            req,
+            api_version,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     async def handle_alter_partition_request(
             self,
@@ -2000,7 +2149,25 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[CreatePartitionsResponse], Awaitable[None]],
     ):
-        pass
+        log.info("handling create partitions request", api_version=api_version)
+        try:
+            resp = await do_create_partitions(req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "create partitions request failed",
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.create_partitions_request_error_response(
+                ErrorCode.unknown_server_error,
+                "create partitions handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def create_partitions_request_error_response(
         self,
@@ -2009,7 +2176,12 @@ class Connection(KafkaHandler):
         req: CreatePartitionsRequest,
         api_version: int,
     ) -> CreatePartitionsResponse:
-        pass
+        return create_partitions_error_response(
+            req,
+            api_version,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     async def handle_find_coordinator_request(
         self,
@@ -2108,7 +2280,25 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[IncrementalAlterConfigsResponse], Awaitable[None]],
     ):
-        pass
+        log.info("handling incremental alter configs request", api_version=api_version)
+        try:
+            resp = await do_incremental_alter_configs(req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "incremental alter configs request failed",
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.incremental_alter_configs_request_error_response(
+                ErrorCode.unknown_server_error,
+                "incremental alter configs handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def incremental_alter_configs_request_error_response(
         self,
@@ -2117,7 +2307,12 @@ class Connection(KafkaHandler):
         req: IncrementalAlterConfigsRequest,
         api_version: int,
     ) -> IncrementalAlterConfigsResponse:
-        pass
+        return incremental_alter_configs_error_response(
+            req,
+            api_version,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     async def handle_init_producer_id_request(
         self,
@@ -2337,7 +2532,30 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[OffsetCommitResponse], Awaitable[None]],
     ):
-        pass
+        log.info(
+            "handling offset commit request",
+            group_id=getattr(req, "group_id", None),
+            api_version=api_version,
+        )
+        try:
+            resp = await do_offset_commit(self.server.config, req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "offset commit request failed",
+                group_id=getattr(req, "group_id", None),
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.offset_commit_request_error_response(
+                ErrorCode.unknown_server_error,
+                "offset commit handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def offset_commit_request_error_response(
         self,
@@ -2346,7 +2564,45 @@ class Connection(KafkaHandler):
         req: OffsetCommitRequest,
         api_version: int,
     ) -> OffsetCommitResponse:
-        pass
+        mod = load_payload_module(8, api_version, EntityType.response)
+        response_cls = mod.OffsetCommitResponse
+
+        topics_req = _offset_request_topics(req)
+        topic_cls = response_sequence_element(response_cls, "topics")
+        if topic_cls is None:
+            topic_cls = response_sequence_element(response_cls, "responses")
+        if topic_cls is None:
+            return build_offset_response(response_cls, topics=(), error_code=error_code)
+
+        partition_cls = response_sequence_element(topic_cls, "partitions")
+        if partition_cls is None:
+            partition_cls = response_sequence_element(topic_cls, "partition_responses")
+        if partition_cls is None:
+            return build_offset_response(response_cls, topics=(), error_code=error_code)
+
+        topics = []
+        for topic in topics_req:
+            topic_name = _offset_topic_name(topic)
+            partitions_req = _offset_topic_partitions(topic)
+            partition_responses = []
+            for partition in partitions_req:
+                partition_id = _offset_partition_id(partition)
+                partition_responses.append(
+                    build_partition_response(
+                        partition_cls,
+                        partition=int(partition_id),
+                        error_code=error_code,
+                    )
+                )
+            topics.append(
+                build_topic_response(
+                    topic_cls,
+                    topic_name=str(topic_name),
+                    partitions=partition_responses,
+                )
+            )
+
+        return build_offset_response(response_cls, topics=topics, error_code=error_code)
 
     async def handle_offset_delete_request(
         self,
@@ -2355,7 +2611,30 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[OffsetDeleteResponse], Awaitable[None]],
     ):
-        pass
+        log.info(
+            "handling offset delete request",
+            group_id=getattr(req, "group_id", None),
+            api_version=api_version,
+        )
+        try:
+            resp = await do_offset_delete(self.server.config, req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "offset delete request failed",
+                group_id=getattr(req, "group_id", None),
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.offset_delete_request_error_response(
+                ErrorCode.unknown_server_error,
+                "offset delete handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def offset_delete_request_error_response(
         self,
@@ -2364,7 +2643,45 @@ class Connection(KafkaHandler):
         req: OffsetDeleteRequest,
         api_version: int,
     ) -> OffsetDeleteResponse:
-        pass
+        mod = load_payload_module(47, api_version, EntityType.response)
+        response_cls = mod.OffsetDeleteResponse
+
+        topics_req = _offset_request_topics(req)
+        topic_cls = response_sequence_element(response_cls, "topics")
+        if topic_cls is None:
+            topic_cls = response_sequence_element(response_cls, "responses")
+        if topic_cls is None:
+            return build_offset_response(response_cls, topics=(), error_code=error_code)
+
+        partition_cls = response_sequence_element(topic_cls, "partitions")
+        if partition_cls is None:
+            partition_cls = response_sequence_element(topic_cls, "partition_responses")
+        if partition_cls is None:
+            return build_offset_response(response_cls, topics=(), error_code=error_code)
+
+        topics = []
+        for topic in topics_req:
+            topic_name = _offset_topic_name(topic)
+            partitions_req = _offset_topic_partitions(topic)
+            partition_responses = []
+            for partition in partitions_req:
+                partition_id = _offset_partition_id(partition)
+                partition_responses.append(
+                    build_partition_response(
+                        partition_cls,
+                        partition=int(partition_id),
+                        error_code=error_code,
+                    )
+                )
+            topics.append(
+                build_topic_response(
+                    topic_cls,
+                    topic_name=str(topic_name),
+                    partitions=partition_responses,
+                )
+            )
+
+        return build_offset_response(response_cls, topics=topics, error_code=error_code)
 
     async def handle_offset_fetch_request(
         self,
@@ -2373,7 +2690,30 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[OffsetFetchResponse], Awaitable[None]],
     ):
-        pass
+        log.info(
+            "handling offset fetch request",
+            group_id=getattr(req, "group_id", None),
+            api_version=api_version,
+        )
+        try:
+            resp = await do_offset_fetch(self.server.config, req, api_version)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            log.exception(
+                "offset fetch request failed",
+                group_id=getattr(req, "group_id", None),
+                api_version=api_version,
+                error=str(exc),
+            )
+            fallback = self.offset_fetch_request_error_response(
+                ErrorCode.unknown_server_error,
+                "offset fetch handler failure",
+                req,
+                api_version,
+            )
+            await callback(fallback)
+            return
+
+        await callback(resp)
 
     def offset_fetch_request_error_response(
         self,
@@ -2382,7 +2722,123 @@ class Connection(KafkaHandler):
         req: OffsetFetchRequest,
         api_version: int,
     ) -> OffsetFetchResponse:
-        pass
+        mod = load_payload_module(9, api_version, EntityType.response)
+        response_cls = mod.OffsetFetchResponse
+
+        groups_req = getattr(req, "groups", None)
+        if groups_req is not None:
+            group_cls = response_sequence_element(response_cls, "groups")
+            if group_cls is None:
+                return build_offset_response(response_cls, groups=(), error_code=error_code)
+            group_responses = []
+            for group_req in groups_req:
+                group_id = getattr(group_req, "group_id", None) or getattr(
+                    group_req, "group", ""
+                )
+                topics_req = _offset_request_topics(group_req)
+
+                topic_cls = response_sequence_element(group_cls, "topics")
+                if topic_cls is None:
+                    topic_cls = response_sequence_element(group_cls, "responses")
+                if topic_cls is None:
+                    group_responses.append(
+                        build_group_response(
+                            group_cls,
+                            group_id=str(group_id),
+                            topics=(),
+                            error_code=error_code,
+                        )
+                    )
+                    continue
+
+                partition_cls = response_sequence_element(topic_cls, "partitions")
+                if partition_cls is None:
+                    partition_cls = response_sequence_element(topic_cls, "partition_responses")
+                if partition_cls is None:
+                    group_responses.append(
+                        build_group_response(
+                            group_cls,
+                            group_id=str(group_id),
+                            topics=(),
+                            error_code=error_code,
+                        )
+                    )
+                    continue
+
+                topics = []
+                for topic in topics_req:
+                    topic_name = _offset_topic_name(topic)
+                    partitions_req = _offset_topic_partitions(topic)
+                    partition_responses = []
+                    for partition in partitions_req:
+                        partition_id = _offset_partition_id(partition)
+                        partition_responses.append(
+                            build_partition_response(
+                                partition_cls,
+                                partition=int(partition_id),
+                                error_code=error_code,
+                                committed_offset=-1,
+                                committed_metadata=None,
+                                commit_timestamp_ms=-1,
+                                leader_epoch=-1,
+                            )
+                        )
+                    topics.append(
+                        build_topic_response(
+                            topic_cls,
+                            topic_name=str(topic_name),
+                            partitions=partition_responses,
+                        )
+                    )
+                group_responses.append(
+                    build_group_response(
+                        group_cls,
+                        group_id=str(group_id),
+                        topics=topics,
+                        error_code=error_code,
+                    )
+                )
+            return build_offset_response(response_cls, groups=group_responses, error_code=error_code)
+
+        topics_req = _offset_request_topics(req)
+        topic_cls = response_sequence_element(response_cls, "topics")
+        if topic_cls is None:
+            topic_cls = response_sequence_element(response_cls, "responses")
+        if topic_cls is None:
+            return build_offset_response(response_cls, topics=(), error_code=error_code)
+
+        partition_cls = response_sequence_element(topic_cls, "partitions")
+        if partition_cls is None:
+            partition_cls = response_sequence_element(topic_cls, "partition_responses")
+        if partition_cls is None:
+            return build_offset_response(response_cls, topics=(), error_code=error_code)
+
+        topics = []
+        for topic in topics_req:
+            topic_name = _offset_topic_name(topic)
+            partitions_req = _offset_topic_partitions(topic)
+            partition_responses = []
+            for partition in partitions_req:
+                partition_id = _offset_partition_id(partition)
+                partition_responses.append(
+                    build_partition_response(
+                        partition_cls,
+                        partition=int(partition_id),
+                        error_code=error_code,
+                        committed_offset=-1,
+                        committed_metadata=None,
+                        commit_timestamp_ms=-1,
+                        leader_epoch=-1,
+                    )
+                )
+            topics.append(
+                build_topic_response(
+                    topic_cls,
+                    topic_name=str(topic_name),
+                    partitions=partition_responses,
+                )
+            )
+        return build_offset_response(response_cls, topics=topics, error_code=error_code)
 
     async def handle_offset_for_leader_epoch_request(
         self,
