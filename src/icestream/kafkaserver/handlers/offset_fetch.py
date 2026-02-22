@@ -219,13 +219,15 @@ def _topic_name(topic: object) -> str:
 
 
 def _topic_partitions(topic: object):
-    for name in ("partitions", "partition_data"):
+    for name in ("partitions", "partition_data", "partition_indexes"):
         if hasattr(topic, name):
             return getattr(topic, name) or ()
     return ()
 
 
 def _partition_index(partition: object) -> int:
+    if isinstance(partition, int):
+        return int(partition)
     for name in ("partition_index", "partition", "partition_id", "partition_number"):
         if hasattr(partition, name):
             return int(getattr(partition, name))

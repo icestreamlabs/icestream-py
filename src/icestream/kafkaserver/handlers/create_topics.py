@@ -1,3 +1,11 @@
+import datetime
+import uuid
+from typing import Any, Callable
+
+import kio.schema.create_topics.v7 as create_topics_v7
+import structlog
+from kio.index import load_payload_module
+from kio.schema.errors import ErrorCode
 from kio.schema.create_topics.v0.request import (
     CreateTopicsRequest as CreateTopicsRequestV0,
 )
@@ -94,6 +102,10 @@ from kio.schema.create_topics.v7.response import (
 from kio.schema.create_topics.v7.response import (
     ResponseHeader as CreateTopicsResponseHeaderV7,
 )
+from kio.static.constants import EntityType
+from kio.static.primitive import i16, i32, i32Timedelta
+
+from icestream.kafkaserver.topic_backends import topic_backend_for_name
 
 
 CreateTopicsRequestHeader = (
@@ -139,3 +151,74 @@ CreateTopicsResponse = (
     | CreateTopicsResponseV6
     | CreateTopicsResponseV7
 )
+
+log = structlog.get_logger()
+
+
+async def do_handle_create_topics_request(
+    req: CreateTopicsRequest,
+    api_version: int,
+    callback: Callable[[CreateTopicsResponse], Any],
+) -> None:
+    _ = api_version
+    results = []
+    for topic in req.topics:
+        log.info("create_topic", topic=topic.name, num_partitions=topic.num_partitions)
+        if topic_backend_for_name(topic.name).is_internal:
+            result = create_topics_v7.response.CreatableTopicResult(
+                name=topic.name,
+                topic_id=None,
+                error_code=ErrorCode.topic_authorization_failed,
+                error_message="cannot create internal topic",
+                topic_config_error_code=i16(0),
+                num_partitions=i32(-1),
+                replication_factor=i16(-1),
+                configs=None,
+            )
+        else:
+            result = create_topics_v7.response.CreatableTopicResult(
+                name=topic.name,
+                topic_id=uuid.uuid4(),
+                error_code=ErrorCode.none,
+                error_message=None,
+                topic_config_error_code=i16(0),
+                num_partitions=i32(topic.num_partitions),
+                replication_factor=i16(topic.replication_factor),
+                configs=None,
+            )
+        results.append(result)
+
+    response = create_topics_v7.response.CreateTopicsResponse(
+        throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
+        topics=tuple(results),
+    )
+    await callback(response)
+
+
+def create_topics_error_response(
+    req: CreateTopicsRequest,
+    api_version: int,
+    *,
+    error_code: ErrorCode,
+    error_message: str,
+) -> CreateTopicsResponse:
+    mod = load_payload_module(0, api_version, EntityType.response)
+    results = []
+    for topic in req.topics:
+        results.append(
+            mod.CreatableTopicResult(
+                name=topic.name,
+                topic_id=None,
+                error_code=error_code,
+                error_message=error_message,
+                topic_config_error_code=i16(0),
+                num_partitions=i32(-1),
+                replication_factor=i16(-1),
+                configs=None,
+            )
+        )
+
+    return mod.CreateTopicsResponse(
+        throttle_time=i32Timedelta.parse(datetime.timedelta(milliseconds=0)),
+        topics=tuple(results),
+    )

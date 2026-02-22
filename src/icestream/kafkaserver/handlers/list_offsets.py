@@ -1,5 +1,4 @@
 import datetime
-import io
 from typing import Optional, Tuple, Sequence
 
 from kio.schema.errors import ErrorCode
@@ -127,10 +126,17 @@ from kio.static.primitive import i32, i64, i32Timedelta
 
 from icestream.config import Config
 from icestream.kafkaserver.internal_topics import internal_topics
+from icestream.kafkaserver.topic_wal_reads import read_topic_wal_partition_batches
 from icestream.kafkaserver.topic_backends import topic_backend_for_name
 from icestream.kafkaserver.protocol import decode_kafka_records
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
-from icestream.models import ParquetFile, WALFile, WALFileOffset, Partition
+from icestream.models import (
+    TopicWALFile,
+    TopicWALFileOffset,
+    WALFile,
+    WALFileOffset,
+    Partition,
+)
 from icestream.models.consumer_groups import GroupOffsetLog
 from icestream.utils import normalize_object_key
 
@@ -199,44 +205,45 @@ import kio.schema.list_offsets.v7 as lo_v7
 import kio.schema.list_offsets.v8 as lo_v8
 import kio.schema.list_offsets.v9 as lo_v9
 
-import pyarrow.parquet as pq
-
 EARLIEST = -2
 LATEST = -1
 
 
-async def _find_offset_for_timestamp_parquet(
-        config: Config, pf: ParquetFile, ts: int, floor_offset: int
+async def _find_offset_for_timestamp_topic_wal(
+        config: Config,
+        twf: TopicWALFile,
+        offset_row: TopicWALFileOffset,
+        ts: int,
+        floor_offset: int,
 ) -> Optional[Tuple[int, int]]:
-    if pf.min_timestamp and pf.max_timestamp:
-        min_ts = int(pf.min_timestamp.timestamp() * 1000)
-        max_ts = int(pf.max_timestamp.timestamp() * 1000)
-        if max_ts < ts:
-            return None  # skip everything older than target
-        # if min_ts >= ts we still need to read to get the first offset >= floor_offset
-        # (we can't assume the very first row meets floor_offset).
-    obj = await config.store.get_async(normalize_object_key(config, pf.uri))
-    blob = await obj.bytes_async()
-    pfq = pq.ParquetFile(io.BytesIO(bytes(blob)))
+    batches = await read_topic_wal_partition_batches(
+        config,
+        uri=twf.uri,
+        topic=offset_row.topic_name,
+        partition=offset_row.partition_number,
+        byte_start=int(offset_row.byte_start),
+        byte_end=int(offset_row.byte_end),
+    )
 
-    # TODO can we optimize by using arrow stats?
-    cols = ["offset", "timestamp_ms"]
-    for rg in range(pfq.num_row_groups):
-        tbl = pfq.read_row_group(rg, columns=cols)
-        off = tbl.column(tbl.schema.get_field_index("offset"))
-        tscol = tbl.column(tbl.schema.get_field_index("timestamp_ms"))
-        for i in range(tbl.num_rows):
-            o = int(off[i].as_py())
-            if o < floor_offset:
+    for krb in batches:
+        base = krb.base_offset
+        if base is None:
+            continue
+        lod = krb.last_offset_delta or 0
+        last_in_batch = base + lod
+        if last_in_batch < floor_offset:
+            continue
+
+        base_ts = krb.base_timestamp or 0
+        recs = decode_kafka_records(krb.records)
+
+        for r in recs:
+            a = base + r.offset_delta
+            if a < floor_offset:
                 continue
-            tsv = tscol[i].as_py()
-            if tsv is None:
-                # if timestamp is missing, treat as 0
-                # Kafka allows unknown timestamps
-                tsv = 0
-            tsv = int(tsv)
-            if tsv >= ts:
-                return o, tsv
+            rec_ts = base_ts + (r.timestamp_delta or 0)
+            if rec_ts >= ts:
+                return a, rec_ts
     return None
 
 
@@ -286,19 +293,23 @@ async def _resolve_timestamp_to_offset(
         return ErrorCode.none, target_ts, log_start
 
     async with config.async_session_factory() as session:
-        pfiles: Sequence[ParquetFile] = (
+        topic_rows: Sequence[Tuple[TopicWALFileOffset, TopicWALFile]] = (
             await session.execute(
-                select(ParquetFile)
-                .where(
-                    ParquetFile.topic_name == topic,
-                    ParquetFile.partition_number == partition,
-                    ParquetFile.compacted_at.is_(None),
-                    ParquetFile.max_offset >= log_start,
-                    ParquetFile.min_offset <= last_offset,
+                select(TopicWALFileOffset, TopicWALFile)
+                .join(
+                    TopicWALFile,
+                    TopicWALFile.id == TopicWALFileOffset.topic_wal_file_id,
                 )
-                .order_by(asc(ParquetFile.min_offset))
+                .where(
+                    TopicWALFile.compacted_at.is_(None),
+                    TopicWALFileOffset.topic_name == topic,
+                    TopicWALFileOffset.partition_number == partition,
+                    TopicWALFileOffset.last_offset >= log_start,
+                    TopicWALFileOffset.base_offset <= last_offset,
+                )
+                .order_by(asc(TopicWALFileOffset.base_offset))
             )
-        ).scalars().all()
+        ).all()
 
         result: Result[Tuple[WALFileOffset, WALFile]] = await session.execute(
             select(WALFileOffset, WALFile)
@@ -327,24 +338,24 @@ async def _resolve_timestamp_to_offset(
 
     floor = max(log_start, 0)
 
-    for pf in pfiles:
-        min_ts_file = int(pf.min_timestamp.timestamp() * 1000) if pf.min_timestamp else None
-        max_ts_file = int(pf.max_timestamp.timestamp() * 1000) if pf.max_timestamp else None
+    for off_row, twf in topic_rows:
+        min_ts_file = off_row.min_timestamp
+        max_ts_file = off_row.max_timestamp
         _bump(min_ts_file)
         _bump(max_ts_file)
 
         if max_ts_file is not None and max_ts_file < target_ts:
-            if pf.max_offset is not None:
-                floor = max(floor, int(pf.max_offset) + 1)
+            floor = max(floor, int(off_row.last_offset) + 1)
             continue
 
-        found = await _find_offset_for_timestamp_parquet(config, pf, target_ts, floor)
+        found = await _find_offset_for_timestamp_topic_wal(
+            config, twf, off_row, target_ts, floor
+        )
         if found is not None:
             o, tsv = found
             return ErrorCode.none, tsv, o
 
-        if pf.max_offset is not None:
-            floor = max(floor, int(pf.max_offset) + 1)
+        floor = max(floor, int(off_row.last_offset) + 1)
 
     for off_row, wf in wf_rows:
         min_ts_file = off_row.min_timestamp
@@ -374,7 +385,6 @@ async def _resolve_timestamp_to_offset(
 
 async def do_list_offsets(config: Config, req: ListOffsetsRequest, api_version: int) -> ListOffsetsResponse:
     topic_responses: list[lo_v9.response.ListOffsetsTopicResponse] = []
-    print(req)
 
     internal_specs = {spec.name: spec for spec in internal_topics(config)}
 

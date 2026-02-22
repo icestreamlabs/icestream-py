@@ -8,3 +8,15 @@ docker run --name icestream-postgres -e POSTGRES_USER=icestream -e POSTGRES_PASS
 export ICESTREAM_DATABASE_URL="postgresql+asyncpg://icestream:icestream@localhost:5432/icestream_dev"
 alembic upgrade head
 ```
+
+`icestream` is Postgres-only for runtime metadata (`postgresql+asyncpg`).
+
+### Compaction Modes
+
+`icestream` now uses topic-WAL segments as the active compacted read layer.
+
+- `ICESTREAM_COMPACTION_FORMAT=topic_wal` (default): active runtime compacted path.
+- `ICESTREAM_COMPACTION_FORMAT=parquet`: legacy fallback compaction path kept for compatibility/debugging.
+- `ICESTREAM_COMPACTION_FORMAT=none`: disables compaction worker output.
+
+Active Kafka fetch/list-offsets paths read from raw WAL plus topic-WAL metadata/files. Parquet code remains buildable and test-covered but is not part of the default runtime data flow.

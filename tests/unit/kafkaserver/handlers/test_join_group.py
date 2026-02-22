@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from typing import Sequence
 
@@ -8,10 +9,13 @@ from kio.schema.join_group.v9.request import JoinGroupRequestProtocol
 from kio.schema.join_group.v9.response import JoinGroupResponse
 from kio.schema.types import GroupId
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from icestream.config import Config
-from icestream.kafkaserver.handlers.join_group import do_join_group
+from icestream.kafkaserver.handlers.join_group import (
+    _phase_2_await_rebalance,
+    do_join_group,
+)
 from icestream.models.consumer_groups import ConsumerGroup, GroupMember
 from tests.unit.conftest import i32timedelta_from_ms
 
@@ -114,6 +118,39 @@ async def test_first_join_creates_group_and_member(config):
         ).scalars().all()
         assert len(gm) == 1
         assert gm[0].member_id == resp.member_id
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_first_joins_create_single_group_row(config):
+    gid = "group-create-race"
+    req = _mk_request(group_id=gid, member_id="")
+    race_config = Config()
+
+    async def _join_once():
+        return await do_join_group(race_config, req, api_version=9)
+
+    try:
+        results = await asyncio.gather(
+            *(_join_once() for _ in range(12)), return_exceptions=True
+        )
+        assert all(not isinstance(result, Exception) for result in results)
+        assert all(
+            result.error_code in {ErrorCode.none, ErrorCode.member_id_required}
+            for result in results
+        )
+
+        async with race_config.async_session_factory() as session:
+            group_rows = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(ConsumerGroup)
+                    .where(ConsumerGroup.group_id == gid)
+                )
+            ).scalar_one()
+            assert group_rows == 1
+    finally:
+        if race_config.engine is not None:
+            await race_config.engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -349,6 +386,81 @@ async def test_protocol_selection_majority_preference_over_leader_choice(config)
     assert mids[leader_id].metadata == b"L-rr"
     assert mids[a_id].metadata == b"A-rr"
     assert mids[b_id].metadata == b"B-rr"
+
+
+@pytest.mark.asyncio
+async def test_join_group_phase2_follower_early_return_is_v9_only(config):
+    gid = "group-v5-phase2-no-early-return"
+    now = datetime.datetime.now(datetime.timezone.utc)
+    request_started = now - datetime.timedelta(milliseconds=120_500)
+
+    async with config.async_session_factory() as session:
+        async with session.begin():
+            group = ConsumerGroup(
+                group_id=gid,
+                protocol_type="consumer",
+                selected_protocol="range",
+                generation=5,
+                state="PreparingRebalance",
+                leader_member_id="leader",
+                state_version=1,
+                session_timeout_ms=10_000,
+                rebalance_timeout_ms=30_000,
+                join_phase_deadline_at=now + datetime.timedelta(seconds=30),
+            )
+            session.add(group)
+            await session.flush()
+
+            session.add(
+                GroupMember(
+                    consumer_group_id=group.id,
+                    member_id="leader",
+                    session_timeout_ms=10_000,
+                    rebalance_timeout_ms=30_000,
+                    last_heartbeat_at=now,
+                    member_generation=5,
+                    join_generation=5,
+                    is_in_sync=False,
+                    assignment=None,
+                )
+            )
+            await session.flush()
+            session.add(
+                GroupMember(
+                    consumer_group_id=group.id,
+                    member_id="follower",
+                    session_timeout_ms=10_000,
+                    rebalance_timeout_ms=30_000,
+                    last_heartbeat_at=now,
+                    member_generation=5,
+                    join_generation=6,
+                    is_in_sync=False,
+                    assignment=None,
+                )
+            )
+            await session.flush()
+
+    v5_resp = await _phase_2_await_rebalance(
+        config=config,
+        group_id=GroupId(gid),
+        assigned_member_id="follower",
+        request_started=request_started,
+        request_past_join_deadline=False,
+        api_version=5,
+    )
+    assert v5_resp is not None
+    assert v5_resp.error_code == ErrorCode.coordinator_load_in_progress
+
+    v9_resp = await _phase_2_await_rebalance(
+        config=config,
+        group_id=GroupId(gid),
+        assigned_member_id="follower",
+        request_started=request_started,
+        request_past_join_deadline=False,
+        api_version=9,
+    )
+    assert v9_resp is not None
+    assert v9_resp.error_code == ErrorCode.rebalance_in_progress
 
 
 @pytest.mark.asyncio
@@ -1036,11 +1148,8 @@ async def test_follower_early_exit_during_preparing(config):
         _mk_request_with_protocols(group_id=gid, member_id=follower.member_id, protocols=(("range", b"F"),)),
         api_version=9,
     )
-    assert_join_ok(follower_again)
-    if follower_again.error_code == ErrorCode.rebalance_in_progress:
-        assert follower_again.skip_assignment is True
-    else:
-        assert follower_again.skip_assignment is False
+    assert follower_again.error_code == ErrorCode.rebalance_in_progress
+    assert follower_again.skip_assignment is False
     assert follower_again.members == ()
     assert follower_again.leader == leader.member_id
 

@@ -65,10 +65,35 @@ async def test_run_once_selects_and_processes_wal(monkeypatch):
     await worker.run_once()
 
     assert fake_wal.compacted_at is not None
-    mock_session.commit.assert_called_once()
     worker._select_wal_models.assert_called_once()
     worker._fetch_and_decode.assert_called_once()
     worker._select_parquet_candidates.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_select_wal_models_stops_on_repeated_ids():
+    config = MagicMock()
+    config.MAX_COMPACTION_SELECT_LIMIT = 10
+    config.MAX_COMPACTION_WAL_FILES = 5
+    config.MAX_COMPACTION_BYTES = 10_000
+
+    wal = MagicMock(spec=WALFile)
+    wal.id = 1
+    wal.total_bytes = 100
+
+    execute_result = MagicMock()
+    execute_result.scalars.return_value.all.return_value = [wal]
+
+    session = MagicMock()
+    session.scalars = AsyncMock(side_effect=[[1], [1]])
+    session.execute = AsyncMock(return_value=execute_result)
+
+    worker = CompactorWorker(config, processors=[])
+    selected, total_bytes = await worker._select_wal_models(session)
+
+    assert [row.id for row in selected] == [1]
+    assert total_bytes == 100
+    assert session.execute.await_count == 1
 
 
 @pytest.mark.asyncio

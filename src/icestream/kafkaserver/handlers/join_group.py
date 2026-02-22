@@ -121,6 +121,7 @@ from kio.schema.types import GroupId
 from kio.static.primitive import i32
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, and_, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from icestream.config import Config
 from icestream.models.consumer_groups import GroupMemberProtocol, GroupMember, ConsumerGroup
@@ -397,19 +398,19 @@ class _MemberDetails:
 # new refactored helper functions
 
 async def _find_or_create_group(session: AsyncSession, group_id: GroupId) -> ConsumerGroup:
-    # loads a group by id, creating it if it doesn't exist
+    # create idempotently first, then lock the canonical row.
+    await session.execute(
+        pg_insert(ConsumerGroup)
+        .values(group_id=str(group_id))
+        .on_conflict_do_nothing(index_elements=[ConsumerGroup.group_id])
+    )
     group = (
         await session.execute(
             select(ConsumerGroup)
-            .where(ConsumerGroup.group_id == group_id)
+            .where(ConsumerGroup.group_id == str(group_id))
             .with_for_update()
         )
-    ).scalar_one_or_none()
-
-    if group is None:
-        group = ConsumerGroup(group_id=group_id)
-        session.add(group)
-        await session.flush()
+    ).scalar_one()
     return group
 
 
@@ -425,7 +426,7 @@ def _build_inconsistent_protocol_error(
         protocol_type=group.protocol_type,
         protocol_name=None,
         leader="",
-        skip_assignment=True,
+        skip_assignment=False,
         member_id=assigned_member_id,
         members=tuple(),
     )
@@ -442,7 +443,7 @@ def _build_invalid_session_timeout_error(
         protocol_type=group.protocol_type,
         protocol_name=None,
         leader="",
-        skip_assignment=True,
+        skip_assignment=False,
         member_id=assigned_member_id,
         members=tuple(),
     )
@@ -459,7 +460,7 @@ def _build_member_id_required_response(
         protocol_type=group.protocol_type,
         protocol_name=None,
         leader="",
-        skip_assignment=True,
+        skip_assignment=False,
         member_id=assigned_member_id,
         members=tuple(),
     )
@@ -500,7 +501,7 @@ async def _determine_member(
                         protocol_type=group.protocol_type,
                         protocol_name=None,
                         leader="",
-                        skip_assignment=True,
+                        skip_assignment=False,
                         member_id="",
                         members=tuple(),
                     )
@@ -543,7 +544,7 @@ async def _determine_member(
                     protocol_type=group.protocol_type,
                     protocol_name=None,
                     leader="",
-                    skip_assignment=True,
+                    skip_assignment=False,
                     member_id=assigned_member_id,
                     members=tuple(),
                 )
@@ -979,7 +980,7 @@ async def _handle_join_group_tick(
                 protocol_type=group.protocol_type,
                 protocol_name=None,
                 leader="",
-                skip_assignment=True,
+                skip_assignment=False,
                 member_id=assigned_member_id,
                 members=tuple(),
             )
@@ -1026,7 +1027,7 @@ async def _handle_join_group_tick(
                 protocol_type=group.protocol_type,
                 protocol_name=None,
                 leader=group.leader_member_id or "",
-                skip_assignment=True,
+                skip_assignment=False,
                 member_id=assigned_member_id,
                 members=tuple(),
             )
@@ -1064,7 +1065,7 @@ async def _handle_join_group_tick(
                     protocol_type=group.protocol_type,
                     protocol_name=None,
                     leader="",
-                    skip_assignment=True,
+                    skip_assignment=False,
                     member_id=assigned_member_id,
                     members=tuple(),
                 ),
@@ -1095,6 +1096,7 @@ async def _phase_2_await_rebalance(
     assigned_member_id: str,
     request_started: dt.datetime,
     request_past_join_deadline: bool,
+    api_version: int,
 ) -> Optional[JoinGroupResponse]:
     # phase 2: long-poll until the rebalance is complete or we time out
     # returns an error/early-exit response if one occurs
@@ -1123,12 +1125,12 @@ async def _phase_2_await_rebalance(
                     protocol_type=None,
                     protocol_name=None,
                     leader="",
-                    skip_assignment=True,
+                    skip_assignment=False,
                     member_id=assigned_member_id,
                     members=tuple(),
                 )
 
-            if group.state == "PreparingRebalance":
+            if api_version >= 9 and group.state == "PreparingRebalance":
                 leader_id = group.leader_member_id or ""
                 if leader_id and assigned_member_id != leader_id:
                     return resp_v9.JoinGroupResponse(
@@ -1138,7 +1140,7 @@ async def _phase_2_await_rebalance(
                         protocol_type=group.protocol_type,
                         protocol_name=None,
                         leader=leader_id,
-                        skip_assignment=True,
+                        skip_assignment=False,
                         member_id=assigned_member_id,
                         members=tuple(),
                     )
@@ -1205,7 +1207,7 @@ async def _phase_2_await_rebalance(
                 protocol_type=(g2.protocol_type if g2 else None),
                 protocol_name=None,
                 leader="",
-                skip_assignment=True,
+                skip_assignment=False,
                 member_id=assigned_member_id,
                 members=tuple(),
             )
@@ -1445,6 +1447,7 @@ async def do_join_group(config, req: JoinGroupRequest, api_version) -> JoinGroup
         assigned_member_id=p1_result.assigned_member_id,
         request_started=request_started,
         request_past_join_deadline=p1_result.request_past_join_deadline,
+        api_version=api_version,
     )
 
     if p2_response:

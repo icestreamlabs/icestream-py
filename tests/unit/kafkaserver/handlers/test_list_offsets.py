@@ -126,7 +126,7 @@ async def test_latest_returns_log_end_offset(config, seeded_topics, topic_key, e
     assert off == expected_log_end
 
 @pytest.mark.asyncio
-async def test_timestamp_inside_parquet_range_returns_first_ge_offset(config, seeded_topics):
+async def test_timestamp_inside_topic_wal_range_returns_first_ge_offset(config, seeded_topics):
     topic = seeded_topics["mixed"]["topic"]
     partition = seeded_topics["mixed"]["partition"]
     base_time = seeded_topics["mixed"]["base_time"]
@@ -156,7 +156,7 @@ async def test_timestamp_between_adjacent_files_selects_boundary(config, seeded_
     ec, ts, off, _ = _resp_map(resp)
     assert ec == ErrorCode.none
     assert ts == expected_ts
-    assert off == 20  # first offset of the next Parquet range
+    assert off == 20  # first offset of the next compacted topic-wal range
 
 @pytest.mark.asyncio
 async def test_timestamp_after_max_returns_log_end_offset(config, seeded_topics):
@@ -203,7 +203,7 @@ async def test_no_data_partition_latest_and_earliest(config, seeded_topics):
     assert idx[(topic, partition, LATEST)]   == (ErrorCode.none, 0)
 
 @pytest.mark.asyncio
-async def test_uses_walfileoffset_when_no_parquet(config, seeded_topics):
+async def test_uses_walfileoffset_when_no_topic_wal(config, seeded_topics):
     topic = seeded_topics["wal_only"]["topic"]
     partition = seeded_topics["wal_only"]["partition"]
     base_time = seeded_topics["wal_only"]["base_time"]
@@ -234,7 +234,6 @@ async def test_multiple_topics_and_partitions(config, seeded_topics):
     ]
     req = mk_req_multi(items)
     resp = await do_list_offsets(config, req, api_version=9)
-    print(resp)
 
     idx = _index_response(resp)
     assert idx[(mixed["topic"], mixed["partition"], LATEST)] == (ErrorCode.none, 40)

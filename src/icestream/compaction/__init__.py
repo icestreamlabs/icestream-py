@@ -1,18 +1,31 @@
 import asyncio
 import datetime
+import inspect
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from typing import Sequence
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload, selectinload
 
-from icestream.compaction.types import CompactionProcessor, CompactionContext
+from icestream.compaction.types import (
+    CompactionProcessor,
+    CompactionContext,
+    CompactionWritePlan,
+)
 from icestream.config import Config
 from icestream.kafkaserver.wal import WALFile as DecodedWALFile, WALBatch
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
-from icestream.models import WALFile as WALFileModel, Topic, ParquetFile
+from icestream.models import (
+    WALFile as WALFileModel,
+    Topic,
+    ParquetFile,
+    TopicWALFile,
+    TopicWALFileOffset,
+    TopicWALFileSource,
+)
 from icestream.logger import log
 from icestream.utils import normalize_object_key
 
@@ -40,33 +53,65 @@ class CompactorWorker:
 
     async def run_once(self, now: float | None = None):
         start_time = now or self.time_source()
+        write_plan = CompactionWritePlan()
+        had_candidates = False
+        orphan_cleanup_attempted = False
+        wal_models: Sequence[WALFileModel] = []
 
-        async with self.config.async_session_factory() as session:
-            wal_models, total_bytes = await self._select_wal_models(session)
+        try:
+            async with self.config.async_session_factory() as session:
+                async with self._session_begin(session):
+                    wal_models, total_bytes = await self._select_wal_models(session)
 
-            if not wal_models:
-                await self._sleep_until_next_interval(start_time)
-                return
+                    if not wal_models:
+                        had_candidates = False
+                    else:
+                        had_candidates = True
 
-            wal_decoded: list[DecodedWALFile] = await self._fetch_and_decode(wal_models)
-            parquet_candidates = await self._select_parquet_candidates(session)
+                        wal_decoded: list[DecodedWALFile] = await self._fetch_and_decode(
+                            wal_models
+                        )
+                        parquet_candidates = await self._select_parquet_candidates(session)
 
-            ctx = CompactionContext(
-                config=self.config,
-                wal_models=wal_models,
-                wal_decoded=wal_decoded,
-                parquet_candidates=parquet_candidates,
-                now_monotonic=start_time,
+                        ctx = CompactionContext(
+                            config=self.config,
+                            wal_models=wal_models,
+                            wal_decoded=wal_decoded,
+                            parquet_candidates=parquet_candidates,
+                            now_monotonic=start_time,
+                        )
+
+                        for p in self.processors:
+                            proc_plan = await self._build_processor_plan(p, ctx)
+                            write_plan.extend(proc_plan)
+
+                        await self._finalize_topic_wal_rows(session, write_plan)
+                        await self._mark_source_wals_compacted(
+                            session, write_plan, wal_models
+                        )
+
+            if had_candidates:
+                log.info(
+                    "compaction finalized",
+                    extra={
+                        "uploaded": len(write_plan.uploaded_object_keys),
+                        "finalized": len(write_plan.topic_wal_files),
+                        "orphan_cleanup_attempted": orphan_cleanup_attempted,
+                    },
+                )
+        except Exception:
+            orphan_cleanup_attempted = bool(write_plan.uploaded_object_keys)
+            if orphan_cleanup_attempted:
+                await self._cleanup_orphaned_objects(write_plan.uploaded_object_keys)
+            log.exception(
+                "compaction finalize failed",
+                extra={
+                    "uploaded": len(write_plan.uploaded_object_keys),
+                    "finalized": 0,
+                    "orphan_cleanup_attempted": orphan_cleanup_attempted,
+                },
             )
-
-            for p in self.processors:
-                await p.apply(ctx)
-
-            now_ts = datetime.datetime.now(datetime.UTC)
-            for wm in wal_models:
-                if wm.compacted_at is None:
-                    wm.compacted_at = now_ts
-            await session.commit()
+            raise
 
         await self._sleep_until_next_interval(start_time)
 
@@ -84,6 +129,10 @@ class CompactorWorker:
                 total_bytes < self.config.MAX_COMPACTION_BYTES
                 and len(selected) < self.config.MAX_COMPACTION_WAL_FILES
         ):
+            where_clauses = [WALFileModel.compacted_at.is_(None)]
+            if seen_ids:
+                where_clauses.append(WALFileModel.id.notin_(tuple(seen_ids)))
+
             limit = min(
                 self.config.MAX_COMPACTION_SELECT_LIMIT,
                 self.config.MAX_COMPACTION_WAL_FILES - len(selected),
@@ -91,15 +140,13 @@ class CompactorWorker:
 
             id_rows = await session.scalars(
                 select(WALFileModel.id)
-                .where(
-                    WALFileModel.compacted_at.is_(None),
-                    ~WALFileModel.id.in_(seen_ids)
-                )
+                .where(*where_clauses)
                 .order_by(WALFileModel.id)
+                # Keep SKIP LOCKED for this sprint; lease-based selection is deferred.
                 .with_for_update(skip_locked=True)
                 .limit(limit)
             )
-            ids = list(id_rows)
+            ids = [wal_id for wal_id in id_rows if wal_id not in seen_ids]
             if not ids:
                 break
             seen_ids.update(ids)
@@ -210,6 +257,124 @@ class CompactorWorker:
         ):
             out[key] = files[:max_files]
 
+    async def _build_processor_plan(
+            self, processor: CompactionProcessor, ctx: CompactionContext
+    ) -> CompactionWritePlan:
+        if "build_plan" in type(processor).__dict__:
+            return await processor.build_plan(ctx)
+
+        # Legacy compatibility for non-topic-WAL processors that still mutate DB directly.
+        if "apply" in type(processor).__dict__:
+            await processor.apply(ctx)
+            legacy_plan = CompactionWritePlan()
+            legacy_plan.compacted_wal_ids.update(
+                wm.id for wm in ctx.wal_models if wm.id is not None
+            )
+            return legacy_plan
+
+        build_plan = getattr(processor, "build_plan", None)
+        if callable(build_plan):
+            return await build_plan(ctx)
+
+        apply = getattr(processor, "apply", None)
+        if callable(apply):
+            await apply(ctx)
+            legacy_plan = CompactionWritePlan()
+            legacy_plan.compacted_wal_ids.update(
+                wm.id for wm in ctx.wal_models if wm.id is not None
+            )
+            return legacy_plan
+
+        return CompactionWritePlan()
+
+    async def _finalize_topic_wal_rows(
+            self, session, write_plan: CompactionWritePlan
+    ) -> None:
+        for file_plan in write_plan.topic_wal_files:
+            twf = TopicWALFile(
+                topic_name=file_plan.topic_name,
+                uri=file_plan.uri,
+                etag=file_plan.etag,
+                total_bytes=file_plan.total_bytes,
+                total_messages=file_plan.total_messages,
+            )
+            session.add(twf)
+            await session.flush()
+
+            for offset in file_plan.offsets:
+                session.add(
+                    TopicWALFileOffset(
+                        topic_wal_file_id=twf.id,
+                        topic_name=offset.topic_name,
+                        partition_number=offset.partition_number,
+                        base_offset=offset.base_offset,
+                        last_offset=offset.last_offset,
+                        byte_start=offset.byte_start,
+                        byte_end=offset.byte_end,
+                        min_timestamp=offset.min_timestamp,
+                        max_timestamp=offset.max_timestamp,
+                    )
+                )
+                await session.flush()
+
+            for wal_file_id in sorted(set(file_plan.source_wal_ids)):
+                session.add(
+                    TopicWALFileSource(
+                        topic_wal_file_id=twf.id,
+                        wal_file_id=wal_file_id,
+                    )
+                )
+                await session.flush()
+
+    async def _mark_source_wals_compacted(
+            self,
+            session,
+            write_plan: CompactionWritePlan,
+            wal_models: Sequence[WALFileModel],
+    ) -> None:
+        if not write_plan.compacted_wal_ids:
+            return
+        now_ts = datetime.datetime.now(datetime.UTC)
+        await session.execute(
+            update(WALFileModel)
+            .where(
+                WALFileModel.id.in_(write_plan.compacted_wal_ids),
+                WALFileModel.compacted_at.is_(None),
+            )
+            .values(compacted_at=now_ts)
+        )
+        compacted_ids = set(write_plan.compacted_wal_ids)
+        for wal_model in wal_models:
+            if wal_model.id in compacted_ids and wal_model.compacted_at is None:
+                wal_model.compacted_at = now_ts
+
+    async def _cleanup_orphaned_objects(self, object_keys: list[str]) -> None:
+        keys = sorted(set(object_keys))
+        if not keys:
+            return
+        try:
+            await self.config.store.delete_async(keys)
+        except Exception:
+            log.exception(
+                "best-effort orphan cleanup failed",
+                extra={"count": len(keys)},
+            )
+
+    @staticmethod
+    @asynccontextmanager
+    async def _session_begin(session):
+        begin = getattr(session, "begin", None)
+        if (
+                callable(begin)
+                and not inspect.iscoroutinefunction(begin)
+        ):
+            tx = begin()
+            if hasattr(tx, "__aenter__") and hasattr(tx, "__aexit__"):
+                async with tx:
+                    yield
+                return
+        yield
+
 # currently only support Avro for schema
 # in theory can support plain json with some caveats
 # also non schema data, ie pure key/value straight from kafka records as key and value columns
@@ -226,5 +391,3 @@ class IcebergCompactor(CompactionProcessor):
                     if not topic.schema:
                         log.info(f"no schema for topic {topic.name}")
                         continue
-
-

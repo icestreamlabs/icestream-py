@@ -111,6 +111,9 @@ class WALFile(Base, BigIntIdMixin, TimestampMixin):
     wal_file_offsets: Mapped[list["WALFileOffset"]] = relationship(
         back_populates="wal_file"
     )
+    topic_wal_file_sources: Mapped[list["TopicWALFileSource"]] = relationship(
+        back_populates="wal_file"
+    )
 
 
 class WALFileOffset(Base, BigIntIdMixin):
@@ -157,6 +160,110 @@ class WALFileOffset(Base, BigIntIdMixin):
             "min_timestamp",
             "max_timestamp",
         ),
+    )
+
+
+class TopicWALFile(Base, BigIntIdMixin, TimestampMixin):
+    __tablename__ = "topic_wal_files"
+
+    topic_name: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("topics.name", ondelete="CASCADE"),
+        nullable=False,
+    )
+    uri: Mapped[str] = mapped_column(Text, nullable=False)
+    etag: Mapped[Optional[str]] = mapped_column(Text)
+    total_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_messages: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    compacted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+    topic_wal_file_offsets: Mapped[list["TopicWALFileOffset"]] = relationship(
+        back_populates="topic_wal_file"
+    )
+    topic_wal_file_sources: Mapped[list["TopicWALFileSource"]] = relationship(
+        back_populates="topic_wal_file"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("uri"),
+        Index("ix_twf_topic_compacted", "topic_name", "compacted_at"),
+    )
+
+
+class TopicWALFileOffset(Base, BigIntIdMixin):
+    __tablename__ = "topic_wal_file_offsets"
+
+    topic_wal_file_id: Mapped[int] = mapped_column(
+        ForeignKey("topic_wal_files.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    topic_name: Mapped[str] = mapped_column(nullable=False)
+    partition_number: Mapped[int] = mapped_column(nullable=False)
+    base_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    byte_start: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    byte_end: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    min_timestamp: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    max_timestamp: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+
+    topic_wal_file: Mapped["TopicWALFile"] = relationship(
+        back_populates="topic_wal_file_offsets"
+    )
+    partition: Mapped["Partition"] = relationship(
+        primaryjoin=and_(
+            topic_name == Partition.topic_name,
+            partition_number == Partition.partition_number,
+        ),
+        foreign_keys=[topic_name, partition_number],
+        viewonly=True,
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["topic_name", "partition_number"],
+            ["partitions.topic_name", "partitions.partition_number"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("topic_wal_file_id", "partition_number"),
+        Index("ix_twfo_file", "topic_wal_file_id"),
+        Index("ix_twfo_topic_part_base", "topic_name", "partition_number", "base_offset"),
+        Index("ix_twfo_topic_part_last", "topic_name", "partition_number", "last_offset"),
+        Index(
+            "ix_twfo_topic_part_min_ts",
+            "topic_name",
+            "partition_number",
+            "min_timestamp",
+        ),
+        Index(
+            "ix_twfo_topic_part_max_ts",
+            "topic_name",
+            "partition_number",
+            "max_timestamp",
+        ),
+    )
+
+
+class TopicWALFileSource(Base, BigIntIdMixin, TimestampMixin):
+    __tablename__ = "topic_wal_file_sources"
+
+    topic_wal_file_id: Mapped[int] = mapped_column(
+        ForeignKey("topic_wal_files.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    wal_file_id: Mapped[int] = mapped_column(
+        ForeignKey("wal_files.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    topic_wal_file: Mapped["TopicWALFile"] = relationship(
+        back_populates="topic_wal_file_sources"
+    )
+    wal_file: Mapped["WALFile"] = relationship(back_populates="topic_wal_file_sources")
+
+    __table_args__ = (
+        UniqueConstraint("topic_wal_file_id", "wal_file_id"),
+        Index("ix_twfs_twf", "topic_wal_file_id"),
+        Index("ix_twfs_wf", "wal_file_id"),
     )
 
 

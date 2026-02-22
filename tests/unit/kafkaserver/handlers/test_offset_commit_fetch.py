@@ -174,6 +174,32 @@ async def test_offset_commit_generation_fencing(config: Config) -> None:
 
 
 @pytest.mark.asyncio
+async def test_offset_commit_generation_id_or_member_epoch_fencing(config: Config) -> None:
+    await ensure_internal_topics(config)
+
+    async with config.async_session_factory() as session:
+        async with session.begin():
+            await insert_topic_partition(session, "topic-gen-epoch", 0)
+            group = await _create_group(session, group_id="cg-gen-epoch", generation=2)
+            await _create_member(session, group=group, member_id="member-1", generation=2)
+
+    commit_req = SimpleNamespace(
+        group_id="cg-gen-epoch",
+        generation_id_or_member_epoch=1,
+        member_id="member-1",
+        topics=(
+            SimpleNamespace(
+                name="topic-gen-epoch",
+                partitions=(SimpleNamespace(partition_index=0, committed_offset=5),),
+            ),
+        ),
+    )
+    resp = await do_offset_commit(config, commit_req, api_version=9)
+    partitions = _partition_responses(_topic_responses(resp)[0])
+    assert _partition_error(partitions[0]) == ErrorCode.illegal_generation
+
+
+@pytest.mark.asyncio
 async def test_offset_commit_rebalance_in_progress(config: Config) -> None:
     await ensure_internal_topics(config)
 

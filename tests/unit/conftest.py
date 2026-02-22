@@ -16,7 +16,7 @@ from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Connection, Server
 from icestream.models import Topic, Partition, WALFile, WALFileOffset, ParquetFile
-from tests.utils.seed import create_wal_range, create_parquet_range
+from tests.utils.seed import create_wal_range, create_topic_wal_range
 from tests.utils.time import FakeClock
 
 
@@ -66,18 +66,6 @@ def handler(base_config):
     queue = Queue()
     handler = Connection(Server(config=base_config, queue=queue))
     return handler
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def _freeze_mockgres_snapshot(_ensure_test_db) -> None:
-    if os.getenv("ICESTREAM_USING_MOCKGRES") != "1":
-        return
-    config = Config()
-    assert config.engine is not None
-    async with config.engine.connect() as conn:
-        async with conn.begin():
-            await conn.execute(text("SELECT mockgres_freeze()"))
-    await config.engine.dispose()
 
 
 @pytest.fixture
@@ -198,10 +186,10 @@ async def insert_parquet_file(
 @pytest.fixture
 async def seeded_topics(config: Config) -> Dict[str, Dict]:
     # creates 4 topics with data in db and object store:
-    #   1) mixed            : compacted wal + non-compacted wal + parquet
-    #   2) compacted_only   : compacted wal + parquet
+    #   1) mixed            : compacted wal + non-compacted wal + topic-wal
+    #   2) compacted_only   : compacted wal + topic-wal
     #   3) wal_only         : non-compacted wal only
-    #   4) empty            : no wal/parquet
+    #   4) empty            : no wal/topic-wal
     base_time = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
 
     async with config.async_session_factory() as session:
@@ -227,16 +215,16 @@ async def seeded_topics(config: Config) -> Dict[str, Dict]:
             compacted_at=None,
         )
 
-        # parquet: [0..19] timestamps t..t+19s
-        await create_parquet_range(
+        # compacted topic-wal segment: [0..19] timestamps t..t+19s
+        await create_topic_wal_range(
             config, session,
             topic="mixed", partition=0,
             min_off=0, max_off=19,
             ts_start_ms=ts_ms(base_time),
             ts_step_ms=1000,
         )
-        # parquet: [20..39] timestamps t+40s..t+59s ts gap
-        await create_parquet_range(
+        # compacted topic-wal segment: [20..39] timestamps t+40s..t+59s ts gap
+        await create_topic_wal_range(
             config, session,
             topic="mixed", partition=0,
             min_off=20, max_off=39,
@@ -256,8 +244,8 @@ async def seeded_topics(config: Config) -> Dict[str, Dict]:
             ts_step_ms=1000,
             compacted_at=base_time + datetime.timedelta(minutes=10),
         )
-        # parquet: full cover [0..49]
-        await create_parquet_range(
+        # compacted topic-wal segment: full cover [0..49]
+        await create_topic_wal_range(
             config, session,
             topic="compacted_only", partition=0,
             min_off=0, max_off=49,

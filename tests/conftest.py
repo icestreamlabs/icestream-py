@@ -237,3 +237,16 @@ async def _ensure_test_db():
             output_task.cancel()
         with suppress(asyncio.CancelledError):
             await output_task
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def _freeze_mockgres_snapshot(_ensure_test_db) -> None:
+    if os.getenv("ICESTREAM_USING_MOCKGRES") != "1":
+        return
+
+    config = Config()
+    assert config.engine is not None
+    async with config.engine.connect() as conn:
+        async with conn.begin():
+            await conn.execute(text("SELECT mockgres_freeze()"))
+    await config.engine.dispose()

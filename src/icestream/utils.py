@@ -1,4 +1,5 @@
 import datetime
+from urllib.parse import quote
 
 from kio.static.primitive import i32Timedelta
 
@@ -30,6 +31,12 @@ def normalize_object_key(config: Config, uri_or_key: str) -> str:
             key = key[len(prefix) + 1:]
 
     return key
+
+
+def escape_topic_key_component(topic: str) -> str:
+    """Escape topic names into a single deterministic object-key component."""
+    return quote(topic, safe="")
+
 
 def zero_throttle():
     return i32timedelta_from_ms(0)

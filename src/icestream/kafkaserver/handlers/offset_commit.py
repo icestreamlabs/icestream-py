@@ -272,7 +272,7 @@ def _request_group_id(req: object) -> str:
 
 
 def _request_generation(req: object) -> int | None:
-    for name in ("generation_id", "generation"):
+    for name in ("generation_id_or_member_epoch", "generation_id", "generation"):
         if hasattr(req, name):
             return int(getattr(req, name))
     return None

@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import io
+from dataclasses import dataclass
 from typing import List, Tuple
 
 import pyarrow as pa
@@ -14,7 +15,21 @@ from icestream.config import Config
 from icestream.kafkaserver.protocol import KafkaRecord, KafkaRecordBatch
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.wal.serde import encode_kafka_wal_file_with_offsets
-from icestream.models import ParquetFile, WALFile, WALFileOffset
+from icestream.models import (
+    ParquetFile,
+    WALFile,
+    WALFileOffset,
+    TopicWALFile,
+    TopicWALFileOffset,
+)
+from icestream.utils import escape_topic_key_component
+
+
+@dataclass
+class _SeedBatch:
+    topic: str
+    partition: int
+    kafka_record_batch: KafkaRecordBatch
 
 
 async def create_parquet_range(
@@ -81,7 +96,90 @@ async def create_parquet_range(
     )
     session.add(pf)
     await session.flush()
+    await create_topic_wal_range(
+        config,
+        session,
+        topic=topic,
+        partition=partition,
+        min_off=min_off,
+        max_off=max_off,
+        ts_start_ms=ts_start_ms,
+        ts_step_ms=ts_step_ms,
+    )
     return pf
+
+
+async def create_topic_wal_range(
+    config: Config,
+    session: AsyncSession,
+    *,
+    topic: str,
+    partition: int,
+    min_off: int,
+    max_off: int,
+    ts_start_ms: int | None,
+    ts_step_ms: int = 1000,
+    key_prefix: str | None = None,
+) -> TopicWALFile:
+    records: list[KafkaRecord] = []
+    for i, off in enumerate(range(min_off, max_off + 1)):
+        records.append(
+            KafkaRecord(
+                attributes=0,
+                timestamp_delta=(i * ts_step_ms) if ts_start_ms is not None else 0,
+                offset_delta=off - min_off,
+                key=None,
+                value=f"v-{off}".encode(),
+                headers=[],
+            )
+        )
+
+    batch = KafkaRecordBatch.from_records(min_off, records)
+    if ts_start_ms is not None and records:
+        batch.base_timestamp = ts_start_ms
+        batch.max_timestamp = ts_start_ms + (len(records) - 1) * ts_step_ms
+    else:
+        batch.base_timestamp = 0
+        batch.max_timestamp = 0
+
+    seed_batch = _SeedBatch(topic=topic, partition=partition, kafka_record_batch=batch)
+    wal_bytes, meta = encode_kafka_wal_file_with_offsets([seed_batch], broker_id="seed-broker")
+    md = meta[0]
+
+    key_prefix = (key_prefix or config.TOPIC_WAL_PREFIX).rstrip("/")
+    topic_key = escape_topic_key_component(topic)
+    key = (
+        f"{key_prefix}/topics/{topic_key}/segments/"
+        f"{min_off}-{max_off}-p{partition}-srcseed-chunk0.wal"
+    )
+    await config.store.put_async(key, io.BytesIO(wal_bytes))
+    uri = normalize_object_key(config, key)
+
+    twf = TopicWALFile(
+        topic_name=topic,
+        uri=uri,
+        etag=None,
+        total_bytes=len(wal_bytes),
+        total_messages=(max_off - min_off + 1),
+        compacted_at=None,
+    )
+    session.add(twf)
+    await session.flush()
+
+    twfo = TopicWALFileOffset(
+        topic_wal_file_id=twf.id,
+        topic_name=topic,
+        partition_number=partition,
+        base_offset=min_off,
+        last_offset=max_off,
+        byte_start=md["byte_start"],
+        byte_end=md["byte_end"],
+        min_timestamp=md["min_timestamp"],
+        max_timestamp=md["max_timestamp"],
+    )
+    session.add(twfo)
+    await session.flush()
+    return twf
 
 async def create_wal_range(
     config: Config,

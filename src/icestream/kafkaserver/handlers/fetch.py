@@ -1,5 +1,4 @@
 import datetime
-import io
 
 from kio.schema.errors import ErrorCode
 from kio.schema.fetch.v0.request import (
@@ -151,6 +150,7 @@ from kio.static.primitive import i32, i64, Records, i32Timedelta
 
 from icestream.config import Config
 from icestream.kafkaserver.internal_topics import internal_topics
+from icestream.kafkaserver.topic_wal_reads import read_topic_wal_partition_batches
 from icestream.kafkaserver.topic_backends import topic_backend_for_name
 import kio.schema.fetch.v0 as fetch_v0
 import kio.schema.fetch.v1 as fetch_v1
@@ -165,11 +165,16 @@ import kio.schema.fetch.v9 as fetch_v9
 import kio.schema.fetch.v10 as fetch_v10
 import kio.schema.fetch.v11 as fetch_v11
 from sqlalchemy import asc, func, literal_column, select, update
-import pyarrow.parquet as pq
 
-from icestream.kafkaserver.protocol import decode_kafka_records, KafkaRecord, KafkaRecordBatch, KafkaRecordHeader
+from icestream.kafkaserver.protocol import decode_kafka_records, KafkaRecord, KafkaRecordBatch
 from icestream.kafkaserver.wal.serde import decode_kafka_wal_file
-from icestream.models import Partition, WALFileOffset, WALFile, ParquetFile
+from icestream.models import (
+    Partition,
+    WALFileOffset,
+    WALFile,
+    TopicWALFile,
+    TopicWALFileOffset,
+)
 from icestream.models.consumer_groups import GroupOffsetLog
 from icestream.utils import normalize_object_key
 
@@ -514,7 +519,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                     )
                     continue
 
-                # fetch uncompacted WAL, then parquet
+                # fetch uncompacted WAL, then compacted topic-wal segments
                 records_blob = b""
                 remaining_bytes = max_bytes
                 current_offset = start
@@ -611,115 +616,94 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                         if remaining_bytes <= 0:
                             break
 
-                # parquet
+                # compacted topic-wal segments
                 if remaining_bytes > 0:
-                    pfs = (
+                    topic_wal_rows = (
                         await session.execute(
-                            select(ParquetFile)
-                            .where(
-                                ParquetFile.topic_name == topic_name,
-                                ParquetFile.partition_number == partition,
-                                ParquetFile.compacted_at.is_(None),
-                                ParquetFile.max_offset >= current_offset,
+                            select(TopicWALFileOffset, TopicWALFile)
+                            .join(
+                                TopicWALFile,
+                                TopicWALFile.id == TopicWALFileOffset.topic_wal_file_id,
                             )
-                            .order_by(asc(ParquetFile.min_offset))
+                            .where(
+                                TopicWALFile.compacted_at.is_(None),
+                                TopicWALFileOffset.topic_name == topic_name,
+                                TopicWALFileOffset.partition_number == partition,
+                                TopicWALFileOffset.last_offset >= current_offset,
+                            )
+                            .order_by(asc(TopicWALFileOffset.base_offset))
                         )
-                    ).scalars().all()
+                    ).all()
 
-                    for pf in pfs:
+                    for off, twf in topic_wal_rows:
                         if remaining_bytes <= 0:
                             break
 
-                        obj = await config.store.get_async(normalize_object_key(config, pf.uri))
-                        blob = await obj.bytes_async()
-                        pfq = pq.ParquetFile(io.BytesIO(bytes(blob)))
+                        partition_batches = await read_topic_wal_partition_batches(
+                            config,
+                            uri=twf.uri,
+                            topic=topic_name,
+                            partition=partition,
+                            byte_start=int(off.byte_start),
+                            byte_end=int(off.byte_end),
+                        )
 
-                        target_group_bytes = max(128 * 1024, min(1 * 1024 * 1024, remaining_bytes))
-                        group_rows: list[dict] = []
-                        approx = 0
+                        for krb in partition_batches:
+                            base = krb.base_offset
+                            lod = krb.last_offset_delta
+                            if base is None or lod is None:
+                                continue
 
-                        def flush_group():
-                            nonlocal group_rows, approx, records_blob, remaining_bytes, current_offset
-                            if not group_rows:
-                                return
-                            group_rows.sort(key=lambda r: r["offset"])
-                            base_abs = group_rows[0]["offset"]
-                            # pick a base timestamp (first non-null) else 0
-                            base_ts = next((r["timestamp_ms"] for r in group_rows if r["timestamp_ms"] is not None), 0)
-                            recs: list[KafkaRecord] = []
-                            for r in group_rows:
-                                recs.append(
+                            last_in_batch = base + lod
+                            if last_in_batch < current_offset:
+                                continue
+
+                            recs = decode_kafka_records(krb.records)
+
+                            base_abs = None
+                            for r in recs:
+                                a = base + r.offset_delta
+                                if a >= current_offset:
+                                    base_abs = a
+                                    break
+                            if base_abs is None:
+                                continue
+
+                            fixed: list[KafkaRecord] = []
+                            for r in recs:
+                                a = base + r.offset_delta
+                                if a < current_offset:
+                                    continue
+                                fixed.append(
                                     KafkaRecord(
-                                        offset_delta=int(r["offset"] - base_abs),
-                                        timestamp_delta=(
-                                            0 if r["timestamp_ms"] is None else int(r["timestamp_ms"] - base_ts)),
-                                        key=r["key"],
-                                        value=r["value"],
-                                        headers=[KafkaRecordHeader(key=h["key"], value=h["value"])
-                                                 for h in (r["headers"] or [])],
-                                        attributes=0, # TODO NEED TO FIX
+                                        offset_delta=a - base_abs,
+                                        timestamp_delta=r.timestamp_delta,
+                                        key=r.key,
+                                        value=r.value,
+                                        headers=r.headers,
+                                        attributes=r.attributes,
                                     )
                                 )
-                            batch = KafkaRecordBatch.from_records(offset=base_abs, records=recs)
+                            if not fixed:
+                                continue
+
+                            batch = KafkaRecordBatch.from_records(
+                                offset=base_abs,
+                                records=fixed,
+                                attributes=krb.attributes,
+                            )
                             raw = batch.to_bytes()
 
                             if len(raw) > remaining_bytes and records_blob:
-                                # don't exceed limit if we already have something
-                                group_rows.clear()
-                                approx = 0
-                                return
+                                remaining_bytes = 0
+                                break
 
                             records_blob += raw
                             remaining_bytes -= len(raw)
-                            current_offset = group_rows[-1]["offset"] + 1
-                            group_rows.clear()
-                            approx = 0
+                            current_offset = base_abs + fixed[-1].offset_delta + 1
 
-                        for rg in range(pfq.num_row_groups):
                             if remaining_bytes <= 0:
                                 break
-                            tbl = pfq.read_row_group(
-                                rg,
-                                columns=["offset", "timestamp_ms", "key", "value", "headers"],
-                            )
-
-                            off = tbl.column(tbl.schema.get_field_index("offset"))
-                            ts = tbl.column(tbl.schema.get_field_index("timestamp_ms"))
-                            key = tbl.column(tbl.schema.get_field_index("key"))
-                            val = tbl.column(tbl.schema.get_field_index("value"))
-                            hdr = tbl.column(tbl.schema.get_field_index("headers"))
-
-                            for i in range(tbl.num_rows):
-                                if remaining_bytes <= 0:
-                                    break
-                                o = int(off[i].as_py())
-                                if o < current_offset:
-                                    continue
-
-                                row = {
-                                    "offset": o,
-                                    "timestamp_ms": ts[i].as_py(),
-                                    "key": key[i].as_py(),
-                                    "value": val[i].as_py(),
-                                    "headers": hdr[i].as_py(),
-                                }
-                                # approximate payload size to size batches
-                                k = len(row["key"]) if row["key"] else 0
-                                v = len(row["value"]) if row["value"] else 0
-                                hsz = 0
-                                if row["headers"]:
-                                    for h0 in row["headers"]:
-                                        hsz += (len(h0["key"]) if h0["key"] else 0) + (
-                                            len(h0["value"]) if h0["value"] else 0)
-                                approx += k + v + hsz + 64
-                                group_rows.append(row)
-
-                                if approx >= target_group_bytes:
-                                    flush_group()
-
-                            # flush any remainder of this row group
-                            if remaining_bytes > 0:
-                                flush_group()
 
                 # finalize this partition response
                 partition_responses.append(

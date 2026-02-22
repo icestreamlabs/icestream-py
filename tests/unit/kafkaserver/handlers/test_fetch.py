@@ -20,8 +20,8 @@ from kio.schema.fetch.v11.response import (
     FetchResponse as FetchResponseV11,
 )
 
-from tests.unit.conftest import insert_topic_partition, insert_parquet_file, ts_ms
-from tests.utils.seed import create_parquet_range
+from tests.unit.conftest import insert_topic_partition, ts_ms
+from tests.utils.seed import create_topic_wal_range
 
 
 def _mk_req_v11(
@@ -178,7 +178,7 @@ async def test_fetch_wal_only(config: Config, seeded_topics):
 
 
 @pytest.mark.asyncio
-async def test_fetch_parquet_only(config: Config, seeded_topics):
+async def test_fetch_topic_wal_only(config: Config, seeded_topics):
     req = _mk_req_v11([("compacted_only", [(0, 0, 10_000)])])
     resp = await do_fetch(config, req, api_version=11)
     prt = resp.responses[0].partitions[0]
@@ -276,7 +276,7 @@ async def test_fetch_offset_greater_than_hw_is_out_of_range(config: Config, seed
 
 
 @pytest.mark.asyncio
-async def test_fetch_midstream_from_parquet(config: Config, seeded_topics):
+async def test_fetch_midstream_from_topic_wal(config: Config, seeded_topics):
     req = _mk_req_v11([("compacted_only", [(0, 25, 10_000)])])
     resp = await do_fetch(config, req, api_version=11)
     prt = resp.responses[0].partitions[0]
@@ -333,7 +333,7 @@ async def test_log_start_offset_is_reported_on_success(config: Config):
         base_time = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
         base_ms = int(base_time.timestamp() * 1000)
 
-        await create_parquet_range(
+        await create_topic_wal_range(
             config,
             s,
             topic=topic,
@@ -473,7 +473,7 @@ async def test_fetch_exact_log_start_returns_data_when_available(config: Config)
         base_time = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
         base_ms = int(base_time.timestamp() * 1000)
 
-        await create_parquet_range(
+        await create_topic_wal_range(
             config,
             s,
             topic=topic,
@@ -511,15 +511,15 @@ async def test_same_topic_independent_partition_errors_bytes_empty(config, seede
 
 
 @pytest.mark.asyncio
-async def test_gap_in_parquet_advances_to_next_available(config):
+async def test_gap_in_topic_wal_advances_to_next_available(config):
     topic, part = "gap_topic", 0
     async with config.async_session_factory() as s:
         await insert_topic_partition(s, topic, part, last_offset=29, log_start_offset=0)
         base = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
-        await create_parquet_range(config, s, topic=topic, partition=part,
-                                   min_off=0, max_off=9, ts_start_ms=ts_ms(base))
-        await create_parquet_range(config, s, topic=topic, partition=part,
-                                   min_off=20, max_off=29, ts_start_ms=ts_ms(base) + 20_000)
+        await create_topic_wal_range(config, s, topic=topic, partition=part,
+                                     min_off=0, max_off=9, ts_start_ms=ts_ms(base))
+        await create_topic_wal_range(config, s, topic=topic, partition=part,
+                                     min_off=20, max_off=29, ts_start_ms=ts_ms(base) + 20_000)
         await s.commit()
 
     req = _mk_req_v11([(topic, [(part, 12, 10_000)])])

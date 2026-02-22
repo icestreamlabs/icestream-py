@@ -29,6 +29,7 @@ class Config:
         self.PORT = int(os.getenv("ICESTREAM_PORT", 9092))
         self.ADVERTISED_HOST = os.getenv("ICESTREAM_ADVERTISED_HOST", "localhost")
         self.ADVERTISED_PORT = int(os.getenv("ICESTREAM_ADVERTISED_PORT", 9092))
+        self.ADMIN_PORT = int(os.getenv("ICESTREAM_ADMIN_PORT", 8080))
 
         # db
         self.DATABASE_URL = os.getenv(
@@ -75,10 +76,17 @@ class Config:
         self.FLUSH_SIZE = int(os.getenv("ICESTREAM_FLUSH_SIZE", 100 * 1024 * 1024))
         self.FLUSH_TIMEOUT = float(os.getenv("ICESTREAM_FLUSH_TIMEOUT", 30))
 
-        # compaction (technically just processing and writing to parquet)
+        # compaction
         self.ENABLE_COMPACTION = (
             os.getenv("ICESTREAM_ENABLE_COMPACTION", "true").lower() == "true"
         )
+        self.COMPACTION_FORMAT = os.getenv(
+            "ICESTREAM_COMPACTION_FORMAT", "topic_wal"
+        ).strip().lower()
+        if self.COMPACTION_FORMAT not in {"parquet", "topic_wal", "none"}:
+            raise ValueError(
+                "ICESTREAM_COMPACTION_FORMAT must be one of parquet|topic_wal|none"
+            )
         self.COMPACTION_INTERVAL = int(
             os.getenv("ICESTREAM_COMPACTION_INTERVAL", 60)
         )  # seconds
@@ -119,6 +127,12 @@ class Config:
 
         # where to write parquet files (a prefix/keyspace in your object store)
         self.PARQUET_PREFIX = os.getenv("ICESTREAM_PARQUET_PREFIX", "parquet")
+
+        # where to write topic WAL segment files and how large to target each file
+        self.TOPIC_WAL_PREFIX = os.getenv("ICESTREAM_TOPIC_WAL_PREFIX", "topic_wal")
+        self.TOPIC_WAL_TARGET_BYTES = int(
+            os.getenv("ICESTREAM_TOPIC_WAL_TARGET_BYTES", 256 * 1024 * 1024)
+        )
 
         # pyiceberg - not supported until manifest compaction/rewriting/file deleting is supported
         #

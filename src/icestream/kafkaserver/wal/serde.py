@@ -1,20 +1,21 @@
 import struct
 import time
 from io import BytesIO
-from typing import List
+from typing import Protocol, Sequence
 
-from icestream.kafkaserver.protocol import (
-    KafkaRecordBatch,
-    KafkaRecordHeader,
-    KafkaRecord, decode_kafka_records,
-)
-from icestream.kafkaserver.types import ProduceTopicPartitionData
+from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.utils import encode_varint, decode_varint
 from icestream.kafkaserver.wal import WALBatch, WALFile
 
 
+class WALBatchLike(Protocol):
+    topic: str
+    partition: int
+    kafka_record_batch: KafkaRecordBatch
+
+
 def encode_kafka_wal_file_with_offsets(
-        batches: List[ProduceTopicPartitionData], broker_id: str
+        batches: Sequence[WALBatchLike], broker_id: str
 ) -> tuple[bytes, list[dict]]:
     buf = BytesIO()
     offset_metadata = []

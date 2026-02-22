@@ -54,6 +54,8 @@ class AdminApi:
                         topic_name=new_topic.name, partition_number=idx, last_offset=-1
                     )
                 )
+                # Keep inserts row-by-row for compatibility with mockgres/asyncpg.
+                await session.flush()
             await session.commit()
 
             return TopicResponse(id=new_topic.id, name=new_topic.name, is_internal=new_topic.is_internal)

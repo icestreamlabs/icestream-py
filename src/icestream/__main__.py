@@ -9,6 +9,7 @@ from hypercorn.config import Config as HypercornConfig
 from icestream.admin import AdminApi
 from icestream.compaction import CompactorWorker
 from icestream.compaction.wal_to_parquet import WalToParquetProcessor
+from icestream.compaction.wal_to_topic_wal import WalToTopicWalProcessor
 from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
@@ -51,14 +52,14 @@ async def run():
         wal_manager_handle = asyncio.create_task(wal_manager.run())
 
         server = Server(config=config, queue=queue)
-        server_handle = asyncio.create_task(server.run())
+        server_handle = asyncio.create_task(server.run(port=config.PORT))
         group_reaper_handle = asyncio.create_task(
             run_consumer_group_reaper(config, shutdown_event)
         )
 
         admin_api = AdminApi(config)
         hypercorn_config = HypercornConfig()
-        hypercorn_config.bind = ["0.0.0.0:8080"]
+        hypercorn_config.bind = [f"0.0.0.0:{config.ADMIN_PORT}"]
         hypercorn_config.use_reloader = False
         hypercorn_config.loglevel = "info"
         logging.getLogger("hypercorn.error").propagate = False
@@ -67,8 +68,22 @@ async def run():
             hypercorn_serve(admin_api.app, hypercorn_config)
         )
 
-        if config.ENABLE_COMPACTION:
-            compaction_worker = CompactorWorker(config, [WalToParquetProcessor()])
+        compaction_processors = []
+        if config.COMPACTION_FORMAT == "topic_wal":
+            log.info("compaction format selected", format="topic_wal")
+            compaction_processors = [WalToTopicWalProcessor()]
+        elif config.COMPACTION_FORMAT == "parquet":
+            log.warning(
+                "legacy compaction format selected",
+                format="parquet",
+                note="active read paths use topic_wal by default",
+            )
+            compaction_processors = [WalToParquetProcessor()]
+        elif config.COMPACTION_FORMAT == "none":
+            log.info("compaction format selected", format="none")
+
+        if config.ENABLE_COMPACTION and compaction_processors:
+            compaction_worker = CompactorWorker(config, compaction_processors)
             compaction_worker_handle = asyncio.create_task(compaction_worker.run())
 
         wait_handles = [

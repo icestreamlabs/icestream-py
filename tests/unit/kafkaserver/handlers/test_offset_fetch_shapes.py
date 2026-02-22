@@ -201,12 +201,14 @@ async def test_offset_fetch_v1_single_group_topic_response_shape(config: Config)
 
     fetch_req = SimpleNamespace(
         group_id="cg-v1",
-        topics=(SimpleNamespace(name="topic-v1", partitions=(SimpleNamespace(partition_index=0),)),),
+        topics=(SimpleNamespace(name="topic-v1", partition_indexes=(0,)),),
     )
     fetch_resp = await do_offset_fetch(config, fetch_req, api_version=1)
     topics = _topic_responses(fetch_resp)
     assert len(topics) == 1
-    assert _partition_responses(topics[0])[0].error_code == ErrorCode.none
+    partitions = _partition_responses(topics[0])
+    assert partitions[0].error_code == ErrorCode.none
+    assert int(partitions[0].committed_offset) == 3
 
 
 def test_offset_fetch_helpers_error_paths() -> None:
@@ -223,6 +225,8 @@ def test_offset_fetch_helpers_error_paths() -> None:
         _request_group_id(object())
 
     assert _topic_partitions(object()) == ()
+    assert _topic_partitions(SimpleNamespace(partition_indexes=(1, 2))) == (1, 2)
+    assert _partition_index(7) == 7
     assert _request_topics(object()) is None
     assert _request_groups(object()) is None
 
