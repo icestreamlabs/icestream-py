@@ -83,7 +83,7 @@ from kio.schema.delete_topics.v6.response import (
     ResponseHeader as DeleteTopicsResponseHeaderV6,
 )
 from kio.schema.errors import ErrorCode
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from icestream.config import Config
 from icestream.kafkaserver.handlers.offset_response import response_sequence_element
@@ -152,9 +152,15 @@ def _response_class(api_version: int):
 
 def _request_topics(req: object):
     if hasattr(req, "topics"):
-        return getattr(req, "topics") or ()
+        topics = getattr(req, "topics")
+        if topics:
+            return topics
     if hasattr(req, "topic_names"):
-        return getattr(req, "topic_names") or ()
+        topic_names = getattr(req, "topic_names")
+        if topic_names is not None:
+            return topic_names
+    if hasattr(req, "topics"):
+        return getattr(req, "topics") or ()
     return ()
 
 
@@ -257,12 +263,13 @@ async def do_delete_topics(
         async with session.begin():
             existing_rows = (
                 await session.execute(
-                    select(Topic).where(Topic.name.in_(topic_names))
+                    select(Topic.name).where(Topic.name.in_(topic_names))
                 )
             ).scalars().all()
-            existing = {row.name: row for row in existing_rows}
+            existing = set(existing_rows)
 
             results = []
+            seen_topic_names: set[str] = set()
             for topic_name in topic_names:
                 if not topic_name:
                     results.append(
@@ -275,6 +282,18 @@ async def do_delete_topics(
                     )
                     continue
 
+                if topic_name in seen_topic_names:
+                    results.append(
+                        _build_topic_result(
+                            result_cls,
+                            topic_name=topic_name,
+                            error_code=ErrorCode.invalid_request,
+                            error_message="duplicate topic in delete request",
+                        )
+                    )
+                    continue
+                seen_topic_names.add(topic_name)
+
                 if topic_backend_for_name(topic_name).is_internal:
                     results.append(
                         _build_topic_result(
@@ -286,8 +305,7 @@ async def do_delete_topics(
                     )
                     continue
 
-                row = existing.get(topic_name)
-                if row is None:
+                if topic_name not in existing:
                     results.append(
                         _build_topic_result(
                             result_cls,
@@ -298,7 +316,8 @@ async def do_delete_topics(
                     )
                     continue
 
-                await session.delete(row)
+                await session.execute(delete(Topic).where(Topic.name == topic_name))
+                existing.remove(topic_name)
                 results.append(
                     _build_topic_result(
                         result_cls,

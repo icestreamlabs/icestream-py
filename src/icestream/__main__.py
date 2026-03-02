@@ -14,6 +14,7 @@ from icestream.config import Config
 from icestream.db import run_migrations
 from icestream.kafkaserver.server import Server
 from icestream.kafkaserver.internal_topics import ensure_internal_topics
+from icestream.kafkaserver.producer_state import run_producer_state_reaper
 from icestream.kafkaserver.types import ProduceTopicPartitionData
 from icestream.kafkaserver.wal.manager import WALManager
 from icestream.kafkaserver.consumer_group_liveness import run_consumer_group_reaper
@@ -27,6 +28,7 @@ async def run():
     wal_manager_handle = None
     compaction_worker_handle = None
     group_reaper_handle = None
+    producer_state_reaper_handle = None
 
     def _signal_handler(*_):
         log.warning("shutdown signal received")
@@ -55,6 +57,9 @@ async def run():
         server_handle = asyncio.create_task(server.run(port=config.PORT))
         group_reaper_handle = asyncio.create_task(
             run_consumer_group_reaper(config, shutdown_event)
+        )
+        producer_state_reaper_handle = asyncio.create_task(
+            run_producer_state_reaper(config, shutdown_event)
         )
 
         admin_api = AdminApi(config)
@@ -91,6 +96,7 @@ async def run():
             api_handle,
             wal_manager_handle,
             group_reaper_handle,
+            producer_state_reaper_handle,
             asyncio.create_task(shutdown_event.wait()),
         ]
         if config.ENABLE_COMPACTION and compaction_worker_handle:
@@ -108,7 +114,13 @@ async def run():
         log.exception(f"error during server setup or runtime {e}")
     finally:
         log.info("shutting down")
-        handles = [server_handle, api_handle, wal_manager_handle, group_reaper_handle]
+        handles = [
+            server_handle,
+            api_handle,
+            wal_manager_handle,
+            group_reaper_handle,
+            producer_state_reaper_handle,
+        ]
         if config.ENABLE_COMPACTION and compaction_worker_handle:
             handles.append(compaction_worker_handle)
         for task in handles:

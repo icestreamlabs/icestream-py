@@ -98,6 +98,132 @@ class Partition(Base, IntIdMixin, TimestampMixin):
     )
 
 
+class ProducerSession(Base, TimestampMixin):
+    __tablename__ = "producer_sessions"
+
+    producer_id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    transactional_id: Mapped[Optional[str]] = mapped_column(String, unique=True)
+    producer_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+    partition_states: Mapped[list["ProducerPartitionState"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_producer_sessions_expires_at", "expires_at"),
+    )
+
+
+class ProducerPartitionState(Base):
+    __tablename__ = "producer_partition_state"
+
+    producer_id: Mapped[int] = mapped_column(BigInteger, nullable=False, primary_key=True)
+    producer_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, primary_key=True
+    )
+    topic_name: Mapped[str] = mapped_column(String, nullable=False, primary_key=True)
+    partition_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, primary_key=True
+    )
+    next_expected_sequence: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    last_acked_first_offset: Mapped[Optional[int]] = mapped_column(BigInteger)
+    last_acked_last_offset: Mapped[Optional[int]] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+    session: Mapped["ProducerSession"] = relationship(back_populates="partition_states")
+    recent_batches: Mapped[list["ProducerPartitionRecentBatch"]] = relationship(
+        back_populates="state", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["producer_id"],
+            ["producer_sessions.producer_id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["topic_name", "partition_number"],
+            ["partitions.topic_name", "partitions.partition_number"],
+            ondelete="CASCADE",
+        ),
+        Index("ix_producer_partition_state_topic_partition", "topic_name", "partition_number"),
+    )
+
+
+class ProducerPartitionRecentBatch(Base):
+    __tablename__ = "producer_partition_recent_batches"
+
+    producer_id: Mapped[int] = mapped_column(BigInteger, nullable=False, primary_key=True)
+    producer_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, primary_key=True
+    )
+    topic_name: Mapped[str] = mapped_column(String, nullable=False, primary_key=True)
+    partition_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, primary_key=True
+    )
+    base_sequence: Mapped[int] = mapped_column(
+        Integer, nullable=False, primary_key=True
+    )
+    last_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    first_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_offset: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+    state: Mapped["ProducerPartitionState"] = relationship(back_populates="recent_batches")
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["producer_id"],
+            ["producer_sessions.producer_id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["producer_id", "producer_epoch", "topic_name", "partition_number"],
+            [
+                "producer_partition_state.producer_id",
+                "producer_partition_state.producer_epoch",
+                "producer_partition_state.topic_name",
+                "producer_partition_state.partition_number",
+            ],
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_producer_recent_batches_lookup",
+            "producer_id",
+            "producer_epoch",
+            "topic_name",
+            "partition_number",
+            "base_sequence",
+        ),
+        Index("ix_producer_recent_batches_created_at", "created_at"),
+    )
+
+
 class WALFile(Base, BigIntIdMixin, TimestampMixin):
     __tablename__ = "wal_files"
 

@@ -57,6 +57,18 @@ class Config:
         self.OFFSETS_TOPIC_PARTITIONS = int(
             os.getenv("ICESTREAM_OFFSETS_TOPIC_PARTITIONS", "50")
         )
+        self.PRODUCER_SESSION_TTL_SECONDS = int(
+            os.getenv("ICESTREAM_PRODUCER_SESSION_TTL_SECONDS", str(24 * 60 * 60))
+        )
+        self.PRODUCER_RECENT_BATCH_TTL_SECONDS = int(
+            os.getenv("ICESTREAM_PRODUCER_RECENT_BATCH_TTL_SECONDS", str(60 * 60))
+        )
+        self.PRODUCER_RECENT_BATCH_MAX_PER_PARTITION = int(
+            os.getenv("ICESTREAM_PRODUCER_RECENT_BATCH_MAX_PER_PARTITION", "50")
+        )
+        self.PRODUCER_STATE_CLEANUP_INTERVAL_MS = int(
+            os.getenv("ICESTREAM_PRODUCER_STATE_CLEANUP_INTERVAL_MS", "30000")
+        )
 
         # obj store
         self.OBJECT_STORE_PROVIDER = os.getenv(

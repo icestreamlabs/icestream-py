@@ -168,6 +168,8 @@ from icestream.kafkaserver.handlers.init_producer_id import (
     InitProducerIdRequest,
     InitProducerIdRequestHeader,
     InitProducerIdResponse,
+    do_init_producer_id,
+    init_producer_id_error_response,
 )
 from icestream.kafkaserver.handlers.initialize_share_group_state import (
     InitializeShareGroupStateRequest,
@@ -497,7 +499,9 @@ class Connection(KafkaHandler):
         callback: Callable[[CreateTopicsResponse], Any],
     ):
         _ = header
-        await do_handle_create_topics_request(req, api_version, callback)
+        await do_handle_create_topics_request(
+            self.server.config, req, api_version, callback
+        )
 
     def create_topics_request_error_response(
         self,
@@ -1716,7 +1720,9 @@ class Connection(KafkaHandler):
         api_version: int,
         callback: Callable[[InitProducerIdResponse], Awaitable[None]],
     ):
-        pass
+        _ = header
+        resp = await do_init_producer_id(self.server.config, req, api_version)
+        await callback(resp)
 
     def init_producer_id_request_error_response(
         self,
@@ -1725,7 +1731,12 @@ class Connection(KafkaHandler):
         req: InitProducerIdRequest,
         api_version: int,
     ) -> InitProducerIdResponse:
-        pass
+        return init_producer_id_error_response(
+            req,
+            api_version,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     async def handle_initialize_share_group_state_request(
         self,

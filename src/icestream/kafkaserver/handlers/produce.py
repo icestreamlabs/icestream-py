@@ -17,13 +17,18 @@ from kio.index import load_payload_module
 from kio.schema.errors import ErrorCode
 from kio.static.constants import EntityType
 from kio.static.primitive import i32, i32Timedelta, i64
-from sqlalchemy import update
+from sqlalchemy import select
 
 from icestream.config import Config
 from icestream.kafkaserver.protocol import KafkaRecordBatch
 from icestream.kafkaserver.topic_backends import topic_backend_for_name
 from icestream.kafkaserver.types import ProduceTopicPartitionData
-from icestream.models import Partition
+from icestream.models import (
+    Partition,
+    ProducerPartitionRecentBatch,
+    ProducerPartitionState,
+    ProducerSession,
+)
 
 from kio.schema.produce.v0.request import (
     ProduceRequest as ProduceRequestV0,
@@ -185,6 +190,49 @@ ProduceResponse = (
 log = structlog.get_logger()
 
 
+class _AbortProduceTxn(Exception):
+    def __init__(self, error_code: ErrorCode):
+        self.error_code = error_code
+        super().__init__(str(error_code))
+
+
+def _is_idempotent_batch(parsed_batch: KafkaRecordBatch) -> bool:
+    return (
+        parsed_batch.producer_id >= 0
+        and parsed_batch.producer_epoch >= 0
+        and parsed_batch.base_sequence >= 0
+    )
+
+
+async def _trim_recent_batches(
+    session,
+    *,
+    producer_id: int,
+    producer_epoch: int,
+    topic_name: str,
+    partition_number: int,
+    max_rows: int,
+) -> None:
+    if max_rows <= 0:
+        return
+
+    rows = (
+        await session.execute(
+            select(ProducerPartitionRecentBatch)
+            .where(
+                ProducerPartitionRecentBatch.producer_id == producer_id,
+                ProducerPartitionRecentBatch.producer_epoch == producer_epoch,
+                ProducerPartitionRecentBatch.topic_name == topic_name,
+                ProducerPartitionRecentBatch.partition_number == partition_number,
+            )
+            .order_by(ProducerPartitionRecentBatch.base_sequence.desc())
+        )
+    ).scalars().all()
+
+    for stale in rows[max_rows:]:
+        await session.delete(stale)
+
+
 async def do_handle_produce_request(
     config: Config,
     produce_queue: asyncio.Queue[ProduceTopicPartitionData],
@@ -276,74 +324,272 @@ async def do_handle_produce_request(
                 continue
 
             assert config.async_session_factory is not None
-            async with config.async_session_factory() as session:
-                result = await session.execute(
-                    update(Partition)
-                    .where(
-                        Partition.topic_name == topic_name,
-                        Partition.partition_number == partition_idx,
-                    )
-                    .values(last_offset=Partition.last_offset + record_count)
-                    .returning(
-                        Partition.id,
-                        Partition.last_offset,
-                        Partition.log_start_offset,
-                    )
-                )
-                await session.commit()
-            row = result.first()
-            if row is None:
-                error_code = ErrorCode.unknown_topic_or_partition
-                partition_response = produce_v8.response.PartitionProduceResponse(
-                    index=i32(partition_idx),
-                    error_code=ErrorCode.none if error_code is None else error_code,
-                    base_offset=i64(-1),
-                    log_append_time=None,
-                    log_start_offset=i64(-1),
-                    record_errors=(),
-                    error_message="unknown topic or partition",
-                )
-                partition_responses.append(partition_response)
-                continue
-            _, last_offset, log_start_offset = row
-            first_offset = last_offset - record_count + 1
-
-            # Persist broker-assigned offsets in WAL so compaction/read paths can
-            # reason over absolute partition offsets across files.
-            assert parsed_batch is not None
-            parsed_batch.base_offset = int(first_offset)
-
-            partition_flush_result_fut = Future()
-            produce_topic_partition_data = ProduceTopicPartitionData(
-                topic=topic_name,
-                partition=partition_idx,
-                kafka_record_batch=parsed_batch,
-                flush_result=partition_flush_result_fut,
-            )
-            await produce_queue.put(produce_topic_partition_data)
+            first_offset = -1
+            log_start_offset = -1
+            is_duplicate_retry = False
 
             try:
-                await asyncio.wait_for(
-                    partition_flush_result_fut,
-                    timeout=config.FLUSH_INTERVAL * 2,
-                )
-            except asyncio.CancelledError:
-                error_code = ErrorCode.unknown_server_error
-            except asyncio.TimeoutError:
-                error_code = ErrorCode.request_timed_out
-            except Exception:
-                error_code = ErrorCode.unknown_server_error
-            finally:
-                partition_response = produce_v8.response.PartitionProduceResponse(
-                    index=i32(partition_idx),
-                    error_code=ErrorCode.none if error_code is None else error_code,
-                    base_offset=i64(first_offset if error_code is None else -1),
-                    log_append_time=None,
-                    log_start_offset=i64(log_start_offset),
-                    record_errors=(),
-                    error_message=None,
-                )
-                partition_responses.append(partition_response)
+                async with config.async_session_factory() as session:
+                    async with session.begin():
+                        partition_row = (
+                            await session.execute(
+                                select(Partition)
+                                .where(
+                                    Partition.topic_name == topic_name,
+                                    Partition.partition_number == partition_idx,
+                                )
+                                .with_for_update()
+                            )
+                        ).scalar_one_or_none()
+
+                        if partition_row is None:
+                            error_code = ErrorCode.unknown_topic_or_partition
+                            raise _AbortProduceTxn(error_code)
+
+                        log_start_offset = int(partition_row.log_start_offset)
+                        next_offset = int(partition_row.last_offset) + 1
+
+                        assert parsed_batch is not None
+                        idempotent = _is_idempotent_batch(parsed_batch)
+                        last_sequence = (
+                            parsed_batch.base_sequence + parsed_batch.records_count - 1
+                        )
+                        should_append = True
+                        producer_session: ProducerSession | None = None
+                        producer_state: ProducerPartitionState | None = None
+                        producer_epoch_for_log = parsed_batch.producer_epoch
+
+                        if idempotent:
+                            producer_session = (
+                                await session.execute(
+                                    select(ProducerSession)
+                                    .where(
+                                        ProducerSession.producer_id
+                                        == parsed_batch.producer_id
+                                    )
+                                    .with_for_update()
+                                )
+                            ).scalar_one_or_none()
+                            if producer_session is None:
+                                error_code = ErrorCode.unknown_producer_id
+                                log.info(
+                                    "idempotent_unknown_producer",
+                                    topic=topic_name,
+                                    partition=partition_idx,
+                                    producer_id=parsed_batch.producer_id,
+                                )
+                                raise _AbortProduceTxn(error_code)
+
+                            if producer_session.producer_epoch != parsed_batch.producer_epoch:
+                                error_code = ErrorCode.invalid_producer_epoch
+                                log.info(
+                                    "idempotent_invalid_epoch",
+                                    topic=topic_name,
+                                    partition=partition_idx,
+                                    producer_id=parsed_batch.producer_id,
+                                    producer_epoch=parsed_batch.producer_epoch,
+                                    expected_epoch=producer_session.producer_epoch,
+                                )
+                                raise _AbortProduceTxn(error_code)
+
+                            producer_state = (
+                                await session.execute(
+                                    select(ProducerPartitionState)
+                                    .where(
+                                        ProducerPartitionState.producer_id
+                                        == parsed_batch.producer_id,
+                                        ProducerPartitionState.producer_epoch
+                                        == parsed_batch.producer_epoch,
+                                        ProducerPartitionState.topic_name == topic_name,
+                                        ProducerPartitionState.partition_number
+                                        == partition_idx,
+                                    )
+                                    .with_for_update()
+                                )
+                            ).scalar_one_or_none()
+                            next_expected_sequence = (
+                                int(producer_state.next_expected_sequence)
+                                if producer_state is not None
+                                else 0
+                            )
+
+                            if parsed_batch.base_sequence > next_expected_sequence:
+                                error_code = ErrorCode.out_of_order_sequence_number
+                                log.info(
+                                    "idempotent_out_of_order",
+                                    topic=topic_name,
+                                    partition=partition_idx,
+                                    producer_id=parsed_batch.producer_id,
+                                    producer_epoch=producer_epoch_for_log,
+                                    base_sequence=parsed_batch.base_sequence,
+                                    next_expected_sequence=next_expected_sequence,
+                                )
+                                raise _AbortProduceTxn(error_code)
+
+                            if parsed_batch.base_sequence < next_expected_sequence:
+                                duplicate_row = (
+                                    await session.execute(
+                                        select(ProducerPartitionRecentBatch).where(
+                                            ProducerPartitionRecentBatch.producer_id
+                                            == parsed_batch.producer_id,
+                                            ProducerPartitionRecentBatch.producer_epoch
+                                            == parsed_batch.producer_epoch,
+                                            ProducerPartitionRecentBatch.topic_name
+                                            == topic_name,
+                                            ProducerPartitionRecentBatch.partition_number
+                                            == partition_idx,
+                                            ProducerPartitionRecentBatch.base_sequence
+                                            == parsed_batch.base_sequence,
+                                        )
+                                    )
+                                ).scalar_one_or_none()
+
+                                if (
+                                    duplicate_row is None
+                                    or int(duplicate_row.last_sequence)
+                                    != last_sequence
+                                ):
+                                    error_code = ErrorCode.out_of_order_sequence_number
+                                    log.info(
+                                        "idempotent_out_of_order",
+                                        topic=topic_name,
+                                        partition=partition_idx,
+                                        producer_id=parsed_batch.producer_id,
+                                        producer_epoch=producer_epoch_for_log,
+                                        base_sequence=parsed_batch.base_sequence,
+                                        next_expected_sequence=next_expected_sequence,
+                                    )
+                                    raise _AbortProduceTxn(error_code)
+
+                                is_duplicate_retry = True
+                                should_append = False
+                                first_offset = int(duplicate_row.first_offset)
+                                producer_session.last_seen_at = datetime.datetime.now(
+                                    datetime.timezone.utc
+                                )
+                                producer_session.expires_at = (
+                                    producer_session.last_seen_at
+                                    + datetime.timedelta(
+                                        seconds=config.PRODUCER_SESSION_TTL_SECONDS
+                                    )
+                                )
+                                log.info(
+                                    "idempotent_duplicate_retry",
+                                    topic=topic_name,
+                                    partition=partition_idx,
+                                    producer_id=parsed_batch.producer_id,
+                                    producer_epoch=producer_epoch_for_log,
+                                    base_sequence=parsed_batch.base_sequence,
+                                    first_offset=first_offset,
+                                )
+
+                        if should_append:
+                            # Persist broker-assigned offsets in WAL so compaction/read
+                            # paths can reason over absolute partition offsets across files.
+                            first_offset = next_offset
+                            parsed_batch.base_offset = int(first_offset)
+
+                            partition_flush_result_fut = Future()
+                            produce_topic_partition_data = ProduceTopicPartitionData(
+                                topic=topic_name,
+                                partition=partition_idx,
+                                kafka_record_batch=parsed_batch,
+                                flush_result=partition_flush_result_fut,
+                            )
+                            await produce_queue.put(produce_topic_partition_data)
+
+                            try:
+                                await asyncio.wait_for(
+                                    partition_flush_result_fut,
+                                    timeout=config.FLUSH_INTERVAL * 2,
+                                )
+                            except asyncio.CancelledError:
+                                raise _AbortProduceTxn(ErrorCode.unknown_server_error)
+                            except asyncio.TimeoutError:
+                                raise _AbortProduceTxn(ErrorCode.request_timed_out)
+                            except Exception:
+                                raise _AbortProduceTxn(ErrorCode.unknown_server_error)
+
+                            partition_row.last_offset = int(first_offset + record_count - 1)
+
+                        if idempotent and should_append:
+                            assert parsed_batch is not None
+                            assert producer_session is not None
+                            producer_session.last_seen_at = datetime.datetime.now(
+                                datetime.timezone.utc
+                            )
+                            producer_session.expires_at = (
+                                producer_session.last_seen_at
+                                + datetime.timedelta(
+                                    seconds=config.PRODUCER_SESSION_TTL_SECONDS
+                                )
+                            )
+
+                            if producer_state is None:
+                                producer_state = ProducerPartitionState(
+                                    producer_id=parsed_batch.producer_id,
+                                    producer_epoch=parsed_batch.producer_epoch,
+                                    topic_name=topic_name,
+                                    partition_number=partition_idx,
+                                    next_expected_sequence=0,
+                                )
+                                session.add(producer_state)
+
+                            producer_state.next_expected_sequence = last_sequence + 1
+                            producer_state.last_acked_first_offset = int(first_offset)
+                            producer_state.last_acked_last_offset = int(
+                                first_offset + record_count - 1
+                            )
+
+                            session.add(
+                                ProducerPartitionRecentBatch(
+                                    producer_id=parsed_batch.producer_id,
+                                    producer_epoch=parsed_batch.producer_epoch,
+                                    topic_name=topic_name,
+                                    partition_number=partition_idx,
+                                    base_sequence=parsed_batch.base_sequence,
+                                    last_sequence=last_sequence,
+                                    first_offset=int(first_offset),
+                                    last_offset=int(first_offset + record_count - 1),
+                                )
+                            )
+                            await _trim_recent_batches(
+                                session,
+                                producer_id=parsed_batch.producer_id,
+                                producer_epoch=parsed_batch.producer_epoch,
+                                topic_name=topic_name,
+                                partition_number=partition_idx,
+                                max_rows=config.PRODUCER_RECENT_BATCH_MAX_PER_PARTITION,
+                            )
+                            log.info(
+                                "idempotent_accept",
+                                topic=topic_name,
+                                partition=partition_idx,
+                                producer_id=parsed_batch.producer_id,
+                                producer_epoch=producer_epoch_for_log,
+                                base_sequence=parsed_batch.base_sequence,
+                                next_expected_sequence=last_sequence + 1,
+                                first_offset=int(first_offset),
+                            )
+            except _AbortProduceTxn as exc:
+                error_code = exc.error_code
+
+            partition_response = produce_v8.response.PartitionProduceResponse(
+                index=i32(partition_idx),
+                error_code=ErrorCode.none if error_code is None else error_code,
+                base_offset=i64(first_offset if error_code is None or is_duplicate_retry else -1),
+                log_append_time=None,
+                log_start_offset=i64(log_start_offset),
+                record_errors=(),
+                error_message=None
+                if error_code is None
+                else (
+                    "unknown topic or partition"
+                    if error_code == ErrorCode.unknown_topic_or_partition
+                    else None
+                ),
+            )
+            partition_responses.append(partition_response)
 
         topic_response = produce_v8.response.TopicProduceResponse(
             name=topic_name,
