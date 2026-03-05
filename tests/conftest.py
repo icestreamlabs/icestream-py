@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from icestream.config import Config
 from icestream.db import run_migrations
+from icestream.models import Base
+from icestream.models import consumer_groups as _consumer_group_models  # noqa: F401
 
 
 def _pick_port(preferred: int = 6543) -> int:
@@ -248,5 +250,38 @@ async def _freeze_mockgres_snapshot(_ensure_test_db) -> None:
     assert config.engine is not None
     async with config.engine.connect() as conn:
         async with conn.begin():
+            # Ensure the frozen baseline never includes data leaked from
+            # previously executed tests in the same session.
+            table_names: list[str] = []
+            try:
+                table_rows = await conn.execute(
+                    text(
+                        """
+                        SELECT tablename
+                        FROM pg_tables
+                        WHERE schemaname = 'public'
+                          AND tablename <> 'alembic_version'
+                        ORDER BY tablename
+                        """
+                    )
+                )
+                table_names = [str(row[0]) for row in table_rows]
+            except Exception:
+                # Fallback for environments without pg_tables support.
+                table_names = [
+                    table.name
+                    for table in Base.metadata.sorted_tables
+                    if table.name != "alembic_version"
+                ]
+
+            for table_name in table_names:
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name):
+                    raise RuntimeError(f"unexpected table name: {table_name}")
+                await conn.execute(
+                    text(
+                        f"TRUNCATE TABLE {table_name} RESTART IDENTITY CASCADE"
+                    )
+                )
+
             await conn.execute(text("SELECT mockgres_freeze()"))
     await config.engine.dispose()

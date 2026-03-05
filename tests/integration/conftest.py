@@ -50,6 +50,13 @@ def icestream_ports(monkeypatch, request):
     kafka_port = _reserve_tcp_port()
     enable_compaction = bool(request.node.get_closest_marker("enable_compaction"))
 
+    # Keep integration tests fast and deterministic by flushing each produce
+    # batch immediately and minimizing rebalance delay.
+    monkeypatch.setenv("ICESTREAM_FLUSH_SIZE", "1")
+    monkeypatch.setenv("ICESTREAM_FLUSH_INTERVAL", "0.05")
+    monkeypatch.setenv("ICESTREAM_FLUSH_TIMEOUT", "5")
+    monkeypatch.setenv("ICESTREAM_GROUP_INITIAL_REBALANCE_DELAY_MS", "0")
+
     monkeypatch.setenv(
         "ICESTREAM_ENABLE_COMPACTION", "true" if enable_compaction else "false"
     )

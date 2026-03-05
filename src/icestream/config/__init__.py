@@ -29,7 +29,17 @@ class Config:
         self.PORT = int(os.getenv("ICESTREAM_PORT", 9092))
         self.ADVERTISED_HOST = os.getenv("ICESTREAM_ADVERTISED_HOST", "localhost")
         self.ADVERTISED_PORT = int(os.getenv("ICESTREAM_ADVERTISED_PORT", 9092))
+        self.ADMIN_API_ENABLED = (
+            os.getenv("ICESTREAM_ADMIN_API_ENABLED", "true").strip().lower() == "true"
+        )
         self.ADMIN_PORT = int(os.getenv("ICESTREAM_ADMIN_PORT", 8080))
+        self.ADMIN_MAX_REQUEST_BYTES = int(
+            os.getenv("ICESTREAM_ADMIN_MAX_REQUEST_BYTES", str(1024 * 1024))
+        )
+        self.ADMIN_REQUEST_TIMEOUT_SECONDS = float(
+            os.getenv("ICESTREAM_ADMIN_REQUEST_TIMEOUT_SECONDS", "10")
+        )
+        self._validate_admin_config()
 
         # db
         self.DATABASE_URL = os.getenv(
@@ -173,6 +183,17 @@ class Config:
 
         self.create_engine()
         self.create_store()
+
+    def _validate_admin_config(self):
+        if not self.ADMIN_API_ENABLED:
+            return
+
+        if self.ADMIN_PORT <= 0 or self.ADMIN_PORT > 65535:
+            raise ValueError("ICESTREAM_ADMIN_PORT must be between 1 and 65535")
+        if self.ADMIN_MAX_REQUEST_BYTES <= 0:
+            raise ValueError("ICESTREAM_ADMIN_MAX_REQUEST_BYTES must be > 0")
+        if self.ADMIN_REQUEST_TIMEOUT_SECONDS <= 0:
+            raise ValueError("ICESTREAM_ADMIN_REQUEST_TIMEOUT_SECONDS must be > 0")
 
     def create_engine(self):
         url = make_url(self.DATABASE_URL)

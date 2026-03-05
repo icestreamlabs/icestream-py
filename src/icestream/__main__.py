@@ -62,16 +62,19 @@ async def run():
             run_producer_state_reaper(config, shutdown_event)
         )
 
-        admin_api = AdminApi(config)
-        hypercorn_config = HypercornConfig()
-        hypercorn_config.bind = [f"0.0.0.0:{config.ADMIN_PORT}"]
-        hypercorn_config.use_reloader = False
-        hypercorn_config.loglevel = "info"
-        logging.getLogger("hypercorn.error").propagate = False
+        if config.ADMIN_API_ENABLED:
+            admin_api = AdminApi(config)
+            hypercorn_config = HypercornConfig()
+            hypercorn_config.bind = [f"0.0.0.0:{config.ADMIN_PORT}"]
+            hypercorn_config.use_reloader = False
+            hypercorn_config.loglevel = "info"
+            logging.getLogger("hypercorn.error").propagate = False
 
-        api_handle = asyncio.create_task(
-            hypercorn_serve(admin_api.app, hypercorn_config)
-        )
+            api_handle = asyncio.create_task(
+                hypercorn_serve(admin_api.app, hypercorn_config)
+            )
+        else:
+            log.info("admin api disabled")
 
         compaction_processors = []
         if config.COMPACTION_FORMAT == "topic_wal":
@@ -93,12 +96,13 @@ async def run():
 
         wait_handles = [
             server_handle,
-            api_handle,
             wal_manager_handle,
             group_reaper_handle,
             producer_state_reaper_handle,
             asyncio.create_task(shutdown_event.wait()),
         ]
+        if api_handle:
+            wait_handles.append(api_handle)
         if config.ENABLE_COMPACTION and compaction_worker_handle:
             wait_handles.append(compaction_worker_handle)
 
