@@ -6,6 +6,8 @@ from kio.schema.list_offsets.v9.request import ListOffsetsRequest, ListOffsetsTo
 from kio.schema.types import TopicName, BrokerId
 from kio.static.primitive import i32, i64, i8
 
+from icestream.cache.read_through import ReadThroughSegmentCache
+from icestream.cache.segment_cache import FoyerSegmentCache
 from icestream.kafkaserver.handlers.list_offsets import do_list_offsets
 
 EARLIEST = -2
@@ -247,3 +249,49 @@ async def test_multiple_topics_and_partitions(config, seeded_topics):
 
     t_wal_gap = int((wal["base_time"] + datetime.timedelta(seconds=30)).timestamp() * 1000)
     assert idx[(wal["topic"], wal["partition"], t_wal_gap)] == (ErrorCode.none, 15)
+
+
+@pytest.mark.asyncio
+async def test_repeated_list_offsets_uses_cache_instead_of_second_object_store_read(
+    config, seeded_topics
+):
+    backend = await FoyerSegmentCache.create_memory(memory_capacity_bytes=8 * 1024 * 1024)
+    config.segment_object_reader = ReadThroughSegmentCache(backend)
+
+    get_async_calls = 0
+    original_get_async = config.store.get_async
+
+    async def _counting_get_async(*args, **kwargs):
+        nonlocal get_async_calls
+        get_async_calls += 1
+        return await original_get_async(*args, **kwargs)
+
+    config.store.get_async = _counting_get_async  # type: ignore[assignment]
+
+    try:
+        topic = seeded_topics["wal_only"]["topic"]
+        partition = seeded_topics["wal_only"]["partition"]
+        ts = int(
+            (
+                seeded_topics["wal_only"]["base_time"] + datetime.timedelta(seconds=25)
+            ).timestamp()
+            * 1000
+        )
+
+        req = mk_list_offsets_v9_req(topic, partition, ts)
+        first = await do_list_offsets(config, req, api_version=9)
+        first_calls = get_async_calls
+        second = await do_list_offsets(config, req, api_version=9)
+
+        fp = first.topics[0].partitions[0]
+        sp = second.topics[0].partitions[0]
+        assert int(fp.error_code) == int(ErrorCode.none)
+        assert int(sp.error_code) == int(ErrorCode.none)
+        assert int(fp.offset) == int(sp.offset)
+        assert first_calls > 0
+        assert get_async_calls == first_calls
+    finally:
+        config.store.get_async = original_get_async  # type: ignore[assignment]
+        if config.segment_object_reader is not None:
+            await config.segment_object_reader.close()
+        config.segment_object_reader = None

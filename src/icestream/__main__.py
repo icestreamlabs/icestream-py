@@ -42,6 +42,8 @@ async def run():
     config = Config()
 
     try:
+        await config.initialize_segment_cache()
+
         log.info("Running DB migrations...")
         await run_migrations(config)
         log.info("Migrations complete.")
@@ -136,6 +138,7 @@ async def run():
                     log.info("task cancelled")
                 except Exception as e:
                     log.exception(f"error during task shutdown {e}")
+        await config.close()
         log.info("shutdown complete")
 
 

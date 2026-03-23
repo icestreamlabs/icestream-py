@@ -149,6 +149,7 @@ from kio.schema.types import BrokerId
 from kio.static.primitive import i32, i64, Records, i32Timedelta
 
 from icestream.config import Config
+from icestream.cache.object_reads import read_object_bytes
 from icestream.kafkaserver.internal_topics import internal_topics
 from icestream.kafkaserver.topic_wal_reads import read_topic_wal_partition_batches
 from icestream.kafkaserver.topic_backends import topic_backend_for_name
@@ -176,7 +177,6 @@ from icestream.models import (
     TopicWALFileOffset,
 )
 from icestream.models.consumer_groups import GroupOffsetLog
-from icestream.utils import normalize_object_key
 
 FetchRequestHeader = (
         FetchRequestHeaderV0
@@ -543,9 +543,12 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                     if remaining_bytes <= 0:
                         break
 
-                    obj = await config.store.get_async(normalize_object_key(config, wf.uri))
-                    data = await obj.bytes_async()
-                    decoded = decode_kafka_wal_file(bytes(data))
+                    data = await read_object_bytes(
+                        config,
+                        uri=wf.uri,
+                        version_token=wf.etag,
+                    )
+                    decoded = decode_kafka_wal_file(data)
 
                     for b in decoded.batches:
                         if b.topic != topic_name or b.partition != partition:
@@ -646,6 +649,7 @@ async def do_fetch(config: Config, req: FetchRequest, api_version: int) -> Fetch
                             partition=partition,
                             byte_start=int(off.byte_start),
                             byte_end=int(off.byte_end),
+                            etag=twf.etag,
                         )
 
                         for krb in partition_batches:

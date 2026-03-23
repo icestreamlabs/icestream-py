@@ -124,6 +124,7 @@ from kio.schema.list_offsets.v9.response import (
 )
 from kio.static.primitive import i32, i64, i32Timedelta
 
+from icestream.cache.object_reads import read_object_bytes
 from icestream.config import Config
 from icestream.kafkaserver.internal_topics import internal_topics
 from icestream.kafkaserver.topic_wal_reads import read_topic_wal_partition_batches
@@ -138,7 +139,6 @@ from icestream.models import (
     Partition,
 )
 from icestream.models.consumer_groups import GroupOffsetLog
-from icestream.utils import normalize_object_key
 
 ListOffsetsRequestHeader = (
         ListOffsetsRequestHeaderV0
@@ -223,6 +223,7 @@ async def _find_offset_for_timestamp_topic_wal(
         partition=offset_row.partition_number,
         byte_start=int(offset_row.byte_start),
         byte_end=int(offset_row.byte_end),
+        etag=twf.etag,
     )
 
     for krb in batches:
@@ -250,9 +251,12 @@ async def _find_offset_for_timestamp_topic_wal(
 async def _find_offset_for_timestamp_wal(
         config: Config, wf: WALFile, ts: int, floor_offset: int
 ) -> Optional[Tuple[int, int]]:
-    obj = await config.store.get_async(normalize_object_key(config, wf.uri))
-    data = await obj.bytes_async()
-    decoded = decode_kafka_wal_file(bytes(data))
+    data = await read_object_bytes(
+        config,
+        uri=wf.uri,
+        version_token=wf.etag,
+    )
+    decoded = decode_kafka_wal_file(data)
 
     for b in decoded.batches:
         krb = b.kafka_record_batch

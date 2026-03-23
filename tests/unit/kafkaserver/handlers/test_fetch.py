@@ -1,8 +1,12 @@
+import asyncio
 import datetime
 import struct
+import time
 
 import pytest
 
+from icestream.cache.read_through import ReadThroughSegmentCache
+from icestream.cache.segment_cache import FoyerSegmentCache
 from icestream.config import Config
 from icestream.kafkaserver.handlers.fetch import do_fetch
 from icestream.kafkaserver.protocol import KafkaRecordBatch, decode_kafka_records
@@ -530,3 +534,89 @@ async def test_gap_in_topic_wal_advances_to_next_available(config):
     assert len(offs) > 0
     assert min(offs) >= 20
     assert all(o >= 20 for o in offs)
+
+
+@pytest.mark.asyncio
+async def test_repeated_fetch_uses_cache_instead_of_second_object_store_read(
+    config: Config, seeded_topics
+):
+    backend = await FoyerSegmentCache.create_memory(memory_capacity_bytes=8 * 1024 * 1024)
+    config.segment_object_reader = ReadThroughSegmentCache(backend)
+
+    get_async_calls = 0
+    original_get_async = config.store.get_async
+
+    async def _counting_get_async(*args, **kwargs):
+        nonlocal get_async_calls
+        get_async_calls += 1
+        return await original_get_async(*args, **kwargs)
+
+    config.store.get_async = _counting_get_async  # type: ignore[assignment]
+
+    try:
+        req = _mk_req_v11([("wal_only", [(0, 0, 10_000)])], min_bytes=0, max_wait_ms=0)
+        first = await do_fetch(config, req, api_version=11)
+        first_calls = get_async_calls
+        second = await do_fetch(config, req, api_version=11)
+
+        first_partition = first.responses[0].partitions[0]
+        second_partition = second.responses[0].partitions[0]
+        assert first_partition.error_code == ErrorCode.none
+        assert second_partition.error_code == ErrorCode.none
+        assert bytes(first_partition.records) == bytes(second_partition.records)
+        assert first_calls > 0
+        assert get_async_calls == first_calls
+    finally:
+        config.store.get_async = original_get_async  # type: ignore[assignment]
+        if config.segment_object_reader is not None:
+            await config.segment_object_reader.close()
+        config.segment_object_reader = None
+
+
+@pytest.mark.asyncio
+async def test_cache_reduces_hot_partition_object_reads_and_latency(
+    config: Config, seeded_topics
+):
+    original_get_async = config.store.get_async
+    delayed_get_async_calls = 0
+
+    async def _delayed_get_async(*args, **kwargs):
+        nonlocal delayed_get_async_calls
+        delayed_get_async_calls += 1
+        await asyncio.sleep(0.02)
+        return await original_get_async(*args, **kwargs)
+
+    config.store.get_async = _delayed_get_async  # type: ignore[assignment]
+    req = _mk_req_v11([("wal_only", [(0, 0, 10_000)])], min_bytes=0, max_wait_ms=0)
+
+    try:
+        baseline_t0 = time.perf_counter()
+        await do_fetch(config, req, api_version=11)
+        baseline_t1 = time.perf_counter()
+        await do_fetch(config, req, api_version=11)
+        baseline_t2 = time.perf_counter()
+        baseline_reads = delayed_get_async_calls
+        baseline_second_ms = (baseline_t2 - baseline_t1) * 1000
+
+        backend = await FoyerSegmentCache.create_memory(
+            memory_capacity_bytes=8 * 1024 * 1024
+        )
+        config.segment_object_reader = ReadThroughSegmentCache(backend)
+
+        delayed_get_async_calls = 0
+        cached_t0 = time.perf_counter()
+        await do_fetch(config, req, api_version=11)
+        cached_t1 = time.perf_counter()
+        await do_fetch(config, req, api_version=11)
+        cached_t2 = time.perf_counter()
+        cached_reads = delayed_get_async_calls
+        cached_second_ms = (cached_t2 - cached_t1) * 1000
+
+        assert baseline_reads > 0
+        assert cached_reads < baseline_reads
+        assert cached_second_ms < (baseline_second_ms * 0.5)
+    finally:
+        config.store.get_async = original_get_async  # type: ignore[assignment]
+        if config.segment_object_reader is not None:
+            await config.segment_object_reader.close()
+        config.segment_object_reader = None

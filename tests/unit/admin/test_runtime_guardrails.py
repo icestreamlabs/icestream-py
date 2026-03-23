@@ -21,6 +21,20 @@ def test_admin_config_invalid_request_limits(monkeypatch):
         Config()
 
 
+def test_segment_cache_invalid_mode(monkeypatch):
+    monkeypatch.setenv("ICESTREAM_SEGMENT_CACHE_MODE", "unknown")
+    with pytest.raises(ValueError, match="ICESTREAM_SEGMENT_CACHE_MODE"):
+        Config()
+
+
+def test_segment_cache_hybrid_requires_disk_capacity(monkeypatch):
+    monkeypatch.setenv("ICESTREAM_SEGMENT_CACHE_ENABLED", "true")
+    monkeypatch.setenv("ICESTREAM_SEGMENT_CACHE_MODE", "hybrid")
+    monkeypatch.setenv("ICESTREAM_SEGMENT_CACHE_DISK_CAPACITY_BYTES", "0")
+    with pytest.raises(ValueError, match="ICESTREAM_SEGMENT_CACHE_DISK_CAPACITY_BYTES"):
+        Config()
+
+
 @pytest.mark.asyncio
 async def test_admin_config_allows_disabled_admin_api_with_invalid_port(monkeypatch):
     monkeypatch.setenv("ICESTREAM_ADMIN_API_ENABLED", "false")

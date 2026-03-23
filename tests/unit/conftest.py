@@ -84,6 +84,7 @@ async def config(_freeze_mockgres_snapshot) -> Config:
         try:
             yield config
         finally:
+            await config.close()
             await conn.close()
             await config.engine.dispose()
         return
@@ -92,6 +93,7 @@ async def config(_freeze_mockgres_snapshot) -> Config:
     try:
         yield config
     finally:
+        await config.close()
         if config.engine is not None:
             await config.engine.dispose()
 

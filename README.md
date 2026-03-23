@@ -120,3 +120,44 @@ reads (`/topics`, `/topics/{topic_name}`, `/topics/{topic_name}/offsets`,
 - `ICESTREAM_COMPACTION_FORMAT=none`: disables compaction worker output.
 
 Active Kafka fetch/list-offsets paths read from raw WAL plus topic-WAL metadata/files. Parquet code remains buildable and test-covered but is not part of the default runtime data flow.
+
+### Segment Read Cache
+
+`icestream` includes an optional read-through cache for immutable WAL/topic-WAL
+object reads.
+
+- Disabled by default (`ICESTREAM_SEGMENT_CACHE_ENABLED=false`).
+- Backed by `foyer-py`.
+- Read-through behavior: cache miss -> object store fetch -> cache populate.
+- Keyed by normalized object key + byte range + optional version token (ETag).
+- Cache failures are fail-open for reads (direct object-store fallback).
+
+#### Cache config
+
+- `ICESTREAM_SEGMENT_CACHE_ENABLED` (default `false`)
+- `ICESTREAM_SEGMENT_CACHE_MODE` (`memory` or `hybrid`, default `memory`)
+- `ICESTREAM_SEGMENT_CACHE_MEMORY_CAPACITY_BYTES` (default `67108864`)
+- `ICESTREAM_SEGMENT_CACHE_DISK_CAPACITY_BYTES` (default `268435456`, hybrid only)
+- `ICESTREAM_SEGMENT_CACHE_DIR` (default `/tmp/icestream-segment-cache`, hybrid only)
+- `ICESTREAM_SEGMENT_CACHE_GET_TIMEOUT_SECONDS` (default `0.05`)
+- `ICESTREAM_SEGMENT_CACHE_PUT_TIMEOUT_SECONDS` (default `0.05`)
+
+#### Verification and troubleshooting
+
+- Cache logs:
+  - `segment_cache_initialized`
+  - `segment_cache_miss_fill`
+  - `segment_cache_coalesced_wait`
+  - `segment_cache_get_failed` / `segment_cache_put_failed`
+- If cache backend init fails, startup logs:
+  - `segment_cache_init_failed_fallback_to_direct_reads`
+- For debugging read-path behavior, disable cache with:
+  - `ICESTREAM_SEGMENT_CACHE_ENABLED=false`
+
+#### Rollout sequence
+
+1. Keep cache disabled in local/dev.
+2. Enable in test/staging with `memory` mode and verify hit/miss/fallback logs.
+3. Enable in production (`memory` first, then `hybrid` if needed).
+4. Monitor fetch latency, cache error logs, and object-store read pressure.
+5. Roll back by toggling `ICESTREAM_SEGMENT_CACHE_ENABLED=false` and restarting.

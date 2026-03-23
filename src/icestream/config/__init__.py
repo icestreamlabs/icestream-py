@@ -1,4 +1,6 @@
+import asyncio
 import os
+from pathlib import Path
 from typing import Any, TypeAlias
 
 from boto3 import Session
@@ -16,6 +18,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from icestream.errors import IcebergConfigurationError
+from icestream.logger import log
 
 ObjectStore: TypeAlias = (
     AzureStore | GCSStore | HTTPStore | S3Store | LocalStore | MemoryStore
@@ -92,6 +95,32 @@ class Config:
             os.getenv("ICESTREAM_MAX_IN_FLIGHT_FLUSHES", "3")
         )
         self.store: ObjectStore = MemoryStore()
+
+        # segment cache (disabled by default)
+        self.SEGMENT_CACHE_ENABLED = (
+            os.getenv("ICESTREAM_SEGMENT_CACHE_ENABLED", "false").lower() == "true"
+        )
+        self.SEGMENT_CACHE_MODE = os.getenv(
+            "ICESTREAM_SEGMENT_CACHE_MODE", "memory"
+        ).strip().lower()
+        self.SEGMENT_CACHE_MEMORY_CAPACITY_BYTES = int(
+            os.getenv("ICESTREAM_SEGMENT_CACHE_MEMORY_CAPACITY_BYTES", str(64 * 1024 * 1024))
+        )
+        self.SEGMENT_CACHE_DISK_CAPACITY_BYTES = int(
+            os.getenv("ICESTREAM_SEGMENT_CACHE_DISK_CAPACITY_BYTES", str(256 * 1024 * 1024))
+        )
+        self.SEGMENT_CACHE_DIR = os.getenv(
+            "ICESTREAM_SEGMENT_CACHE_DIR", "/tmp/icestream-segment-cache"
+        )
+        self.SEGMENT_CACHE_GET_TIMEOUT_SECONDS = float(
+            os.getenv("ICESTREAM_SEGMENT_CACHE_GET_TIMEOUT_SECONDS", "0.05")
+        )
+        self.SEGMENT_CACHE_PUT_TIMEOUT_SECONDS = float(
+            os.getenv("ICESTREAM_SEGMENT_CACHE_PUT_TIMEOUT_SECONDS", "0.05")
+        )
+        self._segment_cache_init_lock = asyncio.Lock()
+        self.segment_object_reader = None
+        self._validate_segment_cache_config()
 
         # wal
         self.FLUSH_INTERVAL = float(os.getenv("ICESTREAM_FLUSH_INTERVAL", 2))
@@ -195,6 +224,31 @@ class Config:
         if self.ADMIN_REQUEST_TIMEOUT_SECONDS <= 0:
             raise ValueError("ICESTREAM_ADMIN_REQUEST_TIMEOUT_SECONDS must be > 0")
 
+    def _validate_segment_cache_config(self):
+        if self.SEGMENT_CACHE_MODE not in {"memory", "hybrid"}:
+            raise ValueError(
+                "ICESTREAM_SEGMENT_CACHE_MODE must be one of memory|hybrid"
+            )
+        if self.SEGMENT_CACHE_MEMORY_CAPACITY_BYTES <= 0:
+            raise ValueError("ICESTREAM_SEGMENT_CACHE_MEMORY_CAPACITY_BYTES must be > 0")
+        if self.SEGMENT_CACHE_DISK_CAPACITY_BYTES < 0:
+            raise ValueError(
+                "ICESTREAM_SEGMENT_CACHE_DISK_CAPACITY_BYTES must be >= 0"
+            )
+        if self.SEGMENT_CACHE_GET_TIMEOUT_SECONDS <= 0:
+            raise ValueError("ICESTREAM_SEGMENT_CACHE_GET_TIMEOUT_SECONDS must be > 0")
+        if self.SEGMENT_CACHE_PUT_TIMEOUT_SECONDS <= 0:
+            raise ValueError("ICESTREAM_SEGMENT_CACHE_PUT_TIMEOUT_SECONDS must be > 0")
+        if not self.SEGMENT_CACHE_ENABLED:
+            return
+        if self.SEGMENT_CACHE_MODE == "hybrid":
+            if self.SEGMENT_CACHE_DISK_CAPACITY_BYTES <= 0:
+                raise ValueError(
+                    "ICESTREAM_SEGMENT_CACHE_DISK_CAPACITY_BYTES must be > 0 when hybrid cache is enabled"
+                )
+            if not self.SEGMENT_CACHE_DIR.strip():
+                raise ValueError("ICESTREAM_SEGMENT_CACHE_DIR must be set for hybrid cache")
+
     def create_engine(self):
         url = make_url(self.DATABASE_URL)
 
@@ -273,3 +327,74 @@ class Config:
             or os.getenv("AWS_ENDPOINT_URL")
             or self.S3_ENDPOINT_URL
         )
+
+    async def initialize_segment_cache(self):
+        if not self.SEGMENT_CACHE_ENABLED:
+            self.segment_object_reader = None
+            return None
+        if self.segment_object_reader is not None:
+            return self.segment_object_reader
+
+        async with self._segment_cache_init_lock:
+            if self.segment_object_reader is not None:
+                return self.segment_object_reader
+
+            try:
+                from icestream.cache.read_through import ReadThroughSegmentCache
+                from icestream.cache.segment_cache import FoyerSegmentCache
+
+                if self.SEGMENT_CACHE_MODE == "memory":
+                    backend = await FoyerSegmentCache.create_memory(
+                        memory_capacity_bytes=self.SEGMENT_CACHE_MEMORY_CAPACITY_BYTES
+                    )
+                else:
+                    cache_dir = Path(self.SEGMENT_CACHE_DIR)
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    backend = await FoyerSegmentCache.create_hybrid(
+                        cache_dir=str(cache_dir),
+                        memory_capacity_bytes=self.SEGMENT_CACHE_MEMORY_CAPACITY_BYTES,
+                        disk_capacity_bytes=self.SEGMENT_CACHE_DISK_CAPACITY_BYTES,
+                    )
+
+                self.segment_object_reader = ReadThroughSegmentCache(
+                    backend=backend,
+                    get_timeout_seconds=self.SEGMENT_CACHE_GET_TIMEOUT_SECONDS,
+                    put_timeout_seconds=self.SEGMENT_CACHE_PUT_TIMEOUT_SECONDS,
+                )
+                log.info(
+                    "segment_cache_initialized",
+                    mode=self.SEGMENT_CACHE_MODE,
+                    memory_capacity_bytes=self.SEGMENT_CACHE_MEMORY_CAPACITY_BYTES,
+                    disk_capacity_bytes=(
+                        self.SEGMENT_CACHE_DISK_CAPACITY_BYTES
+                        if self.SEGMENT_CACHE_MODE == "hybrid"
+                        else 0
+                    ),
+                    cache_dir=(
+                        self.SEGMENT_CACHE_DIR
+                        if self.SEGMENT_CACHE_MODE == "hybrid"
+                        else None
+                    ),
+                )
+            except Exception as exc:
+                # Cache is an optimization: fail-open and continue direct reads.
+                self.segment_object_reader = None
+                log.warning(
+                    "segment_cache_init_failed_fallback_to_direct_reads",
+                    mode=self.SEGMENT_CACHE_MODE,
+                    error=type(exc).__name__,
+                )
+
+        return self.segment_object_reader
+
+    async def get_segment_object_reader(self):
+        if self.segment_object_reader is not None:
+            return self.segment_object_reader
+        return await self.initialize_segment_cache()
+
+    async def close(self):
+        if self.segment_object_reader is not None:
+            try:
+                await self.segment_object_reader.close()
+            finally:
+                self.segment_object_reader = None
